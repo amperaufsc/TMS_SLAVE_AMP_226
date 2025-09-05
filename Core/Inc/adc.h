@@ -9,6 +9,7 @@
 #define INC_ADC_H_
 
 #include "main.h"
+#include "cmsis_os.h"
 
 #define numberOfThermistors 16
 #define windowSize 10
@@ -23,6 +24,4 @@
 
 float convertBitsToVoltage(uint16_t rawAdcVal);
 float convertVoltageToTemperature(float voltage);
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc);
-
 #endif /* INC_ADC_H_ */

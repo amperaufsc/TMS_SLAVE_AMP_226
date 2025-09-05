@@ -1,0 +1,2 @@
+../Core/Src/adc.c:11:7:convertBitsToVoltage	1
+../Core/Src/adc.c:15:7:convertVoltageToTemperature	1

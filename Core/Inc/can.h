@@ -11,6 +11,7 @@
 #include "main.h"
 #include "adc.h"
 
+
 #define slave1
 //#define slave2
 //#define slave3
@@ -55,13 +56,13 @@
 #define idSlave4Burst7 0x047
 
 
-void sendTemperatureToMaster0(float buffer);
-void sendTemperatureToMaster1(float buffer);
-void sendTemperatureToMaster2(float buffer);
-void sendTemperatureToMaster3(float buffer);
-void sendTemperatureToMaster4(float buffer);
-void sendTemperatureToMaster5(float buffer);
-void sendTemperatureToMaster6(float buffer);
-void sendTemperatureToMaster7(float buffer);
+void sendTemperatureToMaster0(float buffer[]);
+void sendTemperatureToMaster1(float buffer[]);
+void sendTemperatureToMaster2(float buffer[]);
+void sendTemperatureToMaster3(float buffer[]);
+void sendTemperatureToMaster4(float buffer[]);
+void sendTemperatureToMaster5(float buffer[]);
+void sendTemperatureToMaster6(float buffer[]);
+void sendTemperatureToMaster7(float buffer[]);
 
 #endif /* INC_CAN_H_ */

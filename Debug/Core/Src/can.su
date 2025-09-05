@@ -1,0 +1,8 @@
+../Core/Src/can.c:16:6:sendTemperatureToMaster0	16	static
+../Core/Src/can.c:48:6:sendTemperatureToMaster1	16	static
+../Core/Src/can.c:80:6:sendTemperatureToMaster2	16	static
+../Core/Src/can.c:112:6:sendTemperatureToMaster3	16	static
+../Core/Src/can.c:144:6:sendTemperatureToMaster4	16	static
+../Core/Src/can.c:176:6:sendTemperatureToMaster5	16	static
+../Core/Src/can.c:208:6:sendTemperatureToMaster6	16	static
+../Core/Src/can.c:240:6:sendTemperatureToMaster7	16	static

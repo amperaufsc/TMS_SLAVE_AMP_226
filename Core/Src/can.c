@@ -6,11 +6,14 @@
  */
 #include "can.h"
 #include "string.h"
+#include "main.h"
+#include "adc.h"
 
+extern FDCAN_HandleTypeDef hfdcan1;
 uint8_t FDCAN1TxData[8];
 FDCAN_TxHeaderTypeDef FDCAN1TxHeader;
 
-void sendTemperatureToMaster0(float buffer){
+void sendTemperatureToMaster0(float buffer[]){
 
 	FDCAN1TxHeader.DataLength = 8;
 
@@ -42,7 +45,7 @@ void sendTemperatureToMaster0(float buffer){
 	HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData);
 }
 
-void sendTemperatureToMaster1(float buffer){
+void sendTemperatureToMaster1(float buffer[]){
 
 	FDCAN1TxHeader.DataLength = 8;
 
@@ -74,7 +77,7 @@ void sendTemperatureToMaster1(float buffer){
 	HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData);
 }
 
-void sendTemperatureToMaster2(float buffer){
+void sendTemperatureToMaster2(float buffer[]){
 
 	FDCAN1TxHeader.DataLength = 8;
 
@@ -106,7 +109,7 @@ void sendTemperatureToMaster2(float buffer){
 	HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData);
 }
 
-void sendTemperatureToMaster3(float buffer){
+void sendTemperatureToMaster3(float buffer[]){
 
 	FDCAN1TxHeader.DataLength = 8;
 
@@ -138,7 +141,7 @@ void sendTemperatureToMaster3(float buffer){
 	HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData);
 }
 
-void sendTemperatureToMaster4(float buffer){
+void sendTemperatureToMaster4(float buffer[]){
 
 	FDCAN1TxHeader.DataLength = 8;
 
@@ -170,7 +173,7 @@ void sendTemperatureToMaster4(float buffer){
 	HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData);
 }
 
-void sendTemperatureToMaster5(float buffer){
+void sendTemperatureToMaster5(float buffer[]){
 
 	FDCAN1TxHeader.DataLength = 8;
 
@@ -202,7 +205,7 @@ void sendTemperatureToMaster5(float buffer){
 	HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData);
 }
 
-void sendTemperatureToMaster6(float buffer){
+void sendTemperatureToMaster6(float buffer[]){
 
 	FDCAN1TxHeader.DataLength = 8;
 
@@ -234,7 +237,7 @@ void sendTemperatureToMaster6(float buffer){
 	HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData);
 }
 
-void sendTemperatureToMaster7(float buffer){
+void sendTemperatureToMaster7(float buffer[]){
 
 	FDCAN1TxHeader.DataLength = 8;
 

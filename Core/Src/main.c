@@ -62,8 +62,7 @@ const osThreadAttr_t sendCAN_attributes = {
   .stack_size = 128 * 4
 };
 /* USER CODE BEGIN PV */
-float rawAdcBuffer[numberOfThermistors],
-voltageBuffer [bufferSize], rawTempBuffer [bufferSize], filteredTempBuffer[bufferSize];
+float rawAdcBuffer[numberOfThermistors], voltageBuffer[numberOfThermistors], rawTempBuffer[numberOfThermistors], filteredTempBuffer[numberOfThermistors];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -76,7 +75,7 @@ void readTempFunction(void *argument);
 void sendCANFunction(void *argument);
 
 /* USER CODE BEGIN PFP */
-
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -494,7 +493,11 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	vTaskNotifyGiveFromISR(readTempHandle, &xHigherPriorityTaskWoken);
+	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_readTempFunction */
@@ -532,13 +535,13 @@ void sendCANFunction(void *argument)
   {
 	  static int burst = 0;
 
-	  if (burst%3 = 0){
+	  if (burst%3 == 0){
 		  sendTemperatureToMaster0(filteredTempBuffer);
 		  sendTemperatureToMaster1(filteredTempBuffer);
 		  sendTemperatureToMaster2(filteredTempBuffer);
 	  }
 
-	  else if (burst%3 = 1){
+	  else if (burst%3 == 1){
 		  sendTemperatureToMaster3(filteredTempBuffer);
 		  sendTemperatureToMaster4(filteredTempBuffer);
 		  sendTemperatureToMaster5(filteredTempBuffer);
