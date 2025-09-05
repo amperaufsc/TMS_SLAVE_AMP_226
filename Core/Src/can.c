@@ -5,24 +5,263 @@
  *      Author: Guilherme Lettmann
  */
 #include "can.h"
+#include "string.h"
 
 uint8_t FDCAN1TxData[8];
 FDCAN_TxHeaderTypeDef FDCAN1TxHeader;
 
-void sendTemperatureToMaster(float buffer){
+void sendTemperatureToMaster0(float buffer){
+
 	FDCAN1TxHeader.DataLength = 8;
+
 #ifdef slave1
-	FDCAN1TxHeader.Identifier = idSlave1;
-#endif
-#ifdef slave2
-	FDCAN1TxHeader.Identifier = idSlave2;
-#endif
-#ifdef slave3
-	FDCAN1TxHeader.Identifier = idSlave3;
-#endif
-#ifdef slave4
-	FDCAN1TxHeader.Identifier = idSlave4;
+	FDCAN1TxHeader.Identifier = idSlave1Burst0;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
 #endif
 
+#ifdef slave2
+	FDCAN1TxHeader.Identifier = idSlave2Burst0;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave3
+	FDCAN1TxHeader.Identifier = idSlave3Burst0;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave4
+	FDCAN1TxHeader.Identifier = idSlave4Burst0;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+
+#endif
+
+	HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData);
 }
 
+void sendTemperatureToMaster1(float buffer){
+
+	FDCAN1TxHeader.DataLength = 8;
+
+#ifdef slave1
+	FDCAN1TxHeader.Identifier = idSlave1Burst1;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave2
+	FDCAN1TxHeader.Identifier = idSlave2Burst2;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave3
+	FDCAN1TxHeader.Identifier = idSlave3Burst3;
+	memcpy(&FDCAN1TxData[0], &buffer[0], size3f(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave4
+	FDCAN1TxHeader.Identifier = idSlave4Burst4;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+
+#endif
+
+	HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData);
+}
+
+void sendTemperatureToMaster2(float buffer){
+
+	FDCAN1TxHeader.DataLength = 8;
+
+#ifdef slave1
+	FDCAN1TxHeader.Identifier = idSlave1Burst2;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave2
+	FDCAN1TxHeader.Identifier = idSlave2Burst2;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave3
+	FDCAN1TxHeader.Identifier = idSlave3Burst2;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave4
+	FDCAN1TxHeader.Identifier = idSlave4Burst2;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+
+#endif
+
+	HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData);
+}
+
+void sendTemperatureToMaster3(float buffer){
+
+	FDCAN1TxHeader.DataLength = 8;
+
+#ifdef slave1
+	FDCAN1TxHeader.Identifier = idSlave1Burst3;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave2
+	FDCAN1TxHeader.Identifier = idSlave2Burst3;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave3
+	FDCAN1TxHeader.Identifier = idSlave3Burst3;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave4
+	FDCAN1TxHeader.Identifier = idSlave4Burst3;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+
+#endif
+
+	HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData);
+}
+
+void sendTemperatureToMaster4(float buffer){
+
+	FDCAN1TxHeader.DataLength = 8;
+
+#ifdef slave1
+	FDCAN1TxHeader.Identifier = idSlave1Burst4;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave2
+	FDCAN1TxHeader.Identifier = idSlave2Burst4;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave3
+	FDCAN1TxHeader.Identifier = idSlave3Burst4;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave4
+	FDCAN1TxHeader.Identifier = idSlave4Burst4;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+
+#endif
+
+	HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData);
+}
+
+void sendTemperatureToMaster5(float buffer){
+
+	FDCAN1TxHeader.DataLength = 8;
+
+#ifdef slave1
+	FDCAN1TxHeader.Identifier = idSlave1Burst5;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave2
+	FDCAN1TxHeader.Identifier = idSlave2Burst5;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave3
+	FDCAN1TxHeader.Identifier = idSlave3Burst5;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave4
+	FDCAN1TxHeader.Identifier = idSlave4Burst5;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+
+#endif
+
+	HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData);
+}
+
+void sendTemperatureToMaster6(float buffer){
+
+	FDCAN1TxHeader.DataLength = 8;
+
+#ifdef slave1
+	FDCAN1TxHeader.Identifier = idSlave1Burst6;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave2
+	FDCAN1TxHeader.Identifier = idSlave2Burst6;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave3
+	FDCAN1TxHeader.Identifier = idSlave3Burst6;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave4
+	FDCAN1TxHeader.Identifier = idSlave4Burst6;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+
+#endif
+
+	HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData);
+}
+
+void sendTemperatureToMaster7(float buffer){
+
+	FDCAN1TxHeader.DataLength = 8;
+
+#ifdef slave1
+	FDCAN1TxHeader.Identifier = idSlave1Burst7;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave2
+	FDCAN1TxHeader.Identifier = idSlave2Burst7;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave3
+	FDCAN1TxHeader.Identifier = idSlave3Burst7;
+	memcpy(&FDCAN1TxData[0], &buffer[0], size7of(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+#endif
+
+#ifdef slave4
+	FDCAN1TxHeader.Identifier = idSlave4Burst7;
+	memcpy(&FDCAN1TxData[0], &buffer[0], sizeof(float));
+	memcpy(&FDCAN1TxData[4], &buffer[1], sizeof(float));
+
+#endif
+
+	HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData);
+}

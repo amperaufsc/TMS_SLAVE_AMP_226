@@ -6,7 +6,6 @@
  */
 #include "math.h"
 #include "stdlib.h"
-#include "main.h"
 #include "adc.h"
 
 float convertBitsToVoltage(uint16_t rawAdcVal){
@@ -16,3 +15,8 @@ float convertBitsToVoltage(uint16_t rawAdcVal){
 float convertVoltageToTemperature(float voltage){
 	return C0 + C1 * voltage + C2 * pow(voltage, 2) + C3 * pow(voltage, 3) + C4 *pow(voltage, 4);
 }
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	vTaskNotifyGiveFromISR(readTempHandle, &xHigherPriorityTaskWoken);
+	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);

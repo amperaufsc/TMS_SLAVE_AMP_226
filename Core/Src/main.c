@@ -19,9 +19,11 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "adc.h"
+#include "can.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -70,8 +72,8 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_FDCAN1_Init(void);
 static void MX_ADC2_Init(void);
-void StartDefaultTask(void *argument);
-void StartTask02(void *argument);
+void readTempFunction(void *argument);
+void sendCANFunction(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -139,10 +141,10 @@ int main(void)
 
   /* Create the thread(s) */
   /* creation of readTemp */
-  readTempHandle = osThreadNew(StartDefaultTask, NULL, &readTemp_attributes);
+  readTempHandle = osThreadNew(readTempFunction, NULL, &readTemp_attributes);
 
   /* creation of sendCAN */
-  sendCANHandle = osThreadNew(StartTask02, NULL, &sendCAN_attributes);
+  sendCANHandle = osThreadNew(sendCANFunction, NULL, &sendCAN_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -495,40 +497,62 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE END 4 */
 
-/* USER CODE BEGIN Header_StartDefaultTask */
+/* USER CODE BEGIN Header_readTempFunction */
 /**
   * @brief  Function implementing the readTemp thread.
   * @param  argument: Not used
   * @retval None
   */
-/* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void *argument)
+/* USER CODE END Header_readTempFunction */
+void readTempFunction(void *argument)
 {
   /* USER CODE BEGIN 5 */
+	readTempHandle = xTaskGetCurrentTaskHandle();
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+	  ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+	  osDelay(1);
   }
   /* USER CODE END 5 */
 }
 
-/* USER CODE BEGIN Header_StartTask02 */
+/* USER CODE BEGIN Header_sendCANFunction */
 /**
 * @brief Function implementing the sendCAN thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_StartTask02 */
-void StartTask02(void *argument)
+/* USER CODE END Header_sendCANFunction */
+void sendCANFunction(void *argument)
 {
-  /* USER CODE BEGIN StartTask02 */
+  /* USER CODE BEGIN sendCANFunction */
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+	  static int burst = 0;
+
+	  if (burst%3 = 0){
+		  sendTemperatureToMaster0(filteredTempBuffer);
+		  sendTemperatureToMaster1(filteredTempBuffer);
+		  sendTemperatureToMaster2(filteredTempBuffer);
+	  }
+
+	  else if (burst%3 = 1){
+		  sendTemperatureToMaster3(filteredTempBuffer);
+		  sendTemperatureToMaster4(filteredTempBuffer);
+		  sendTemperatureToMaster5(filteredTempBuffer);
+	  }
+
+	  else{
+		  sendTemperatureToMaster6(filteredTempBuffer);
+		  sendTemperatureToMaster7(filteredTempBuffer);
+	  }
+
+	  burst++;
+	  osDelay(100);
   }
-  /* USER CODE END StartTask02 */
+  /* USER CODE END sendCANFunction */
 }
 
 /**

@@ -23,5 +23,6 @@
 
 float convertBitsToVoltage(uint16_t rawAdcVal);
 float convertVoltageToTemperature(float voltage);
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc);
 
 #endif /* INC_ADC_H_ */
