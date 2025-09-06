@@ -47,17 +47,17 @@ DMA_HandleTypeDef hdma_adc2;
 
 FDCAN_HandleTypeDef hfdcan1;
 
-/* Definitions for readTemp */
-osThreadId_t readTempHandle;
-const osThreadAttr_t readTemp_attributes = {
-  .name = "readTemp",
+/* Definitions for xReadTemp */
+osThreadId_t xReadTempHandle;
+const osThreadAttr_t xReadTemp_attributes = {
+  .name = "xReadTemp",
   .priority = (osPriority_t) osPriorityNormal,
   .stack_size = 128 * 4
 };
-/* Definitions for sendCAN */
-osThreadId_t sendCANHandle;
-const osThreadAttr_t sendCAN_attributes = {
-  .name = "sendCAN",
+/* Definitions for xSendCAN */
+osThreadId_t xSendCANHandle;
+const osThreadAttr_t xSendCAN_attributes = {
+  .name = "xSendCAN",
   .priority = (osPriority_t) osPriorityAboveNormal,
   .stack_size = 128 * 4
 };
@@ -74,8 +74,8 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_FDCAN1_Init(void);
 static void MX_ADC2_Init(void);
-void readTempFunction(void *argument);
-void sendCANFunction(void *argument);
+void xReadTempFunction(void *argument);
+void xSendCANFunction(void *argument);
 
 /* USER CODE BEGIN PFP */
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc);
@@ -142,11 +142,11 @@ int main(void)
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
-  /* creation of readTemp */
-  readTempHandle = osThreadNew(readTempFunction, NULL, &readTemp_attributes);
+  /* creation of xReadTemp */
+  xReadTempHandle = osThreadNew(xReadTempFunction, NULL, &xReadTemp_attributes);
 
-  /* creation of sendCAN */
-  sendCANHandle = osThreadNew(sendCANFunction, NULL, &sendCAN_attributes);
+  /* creation of xSendCAN */
+  xSendCANHandle = osThreadNew(xSendCANFunction, NULL, &xSendCAN_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -503,14 +503,14 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
 }
 /* USER CODE END 4 */
 
-/* USER CODE BEGIN Header_readTempFunction */
+/* USER CODE BEGIN Header_xReadTempFunction */
 /**
-  * @brief  Function implementing the readTemp thread.
+  * @brief  Function implementing the xReadTemp thread.
   * @param  argument: Not used
   * @retval None
   */
-/* USER CODE END Header_readTempFunction */
-void readTempFunction(void *argument)
+/* USER CODE END Header_xReadTempFunction */
+void xReadTempFunction(void *argument)
 {
   /* USER CODE BEGIN 5 */
 	readTempHandle = xTaskGetCurrentTaskHandle();
@@ -523,42 +523,22 @@ void readTempFunction(void *argument)
   /* USER CODE END 5 */
 }
 
-/* USER CODE BEGIN Header_sendCANFunction */
+/* USER CODE BEGIN Header_xSendCANFunction */
 /**
-* @brief Function implementing the sendCAN thread.
+* @brief Function implementing the xSendCAN thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_sendCANFunction */
-void sendCANFunction(void *argument)
+/* USER CODE END Header_xSendCANFunction */
+void xSendCANFunction(void *argument)
 {
-  /* USER CODE BEGIN sendCANFunction */
+  /* USER CODE BEGIN xSendCANFunction */
   /* Infinite loop */
   for(;;)
   {
-	  static int burst = 0;
-
-	  if (burst%3 == 0){
-		  sendTemperatureToMaster0(filteredReadings);
-		  sendTemperatureToMaster1(filteredReadings);
-		  sendTemperatureToMaster2(filteredReadings);
-	  }
-
-	  else if (burst%3 == 1){
-		  sendTemperatureToMaster3(filteredReadings);
-		  sendTemperatureToMaster4(filteredReadings);
-		  sendTemperatureToMaster5(filteredReadings);
-	  }
-
-	  else{
-		  sendTemperatureToMaster6(filteredReadings);
-		  sendTemperatureToMaster7(filteredReadings);
-	  }
-
-	  burst++;
-	  osDelay(100);
+    osDelay(1);
   }
-  /* USER CODE END sendCANFunction */
+  /* USER CODE END xSendCANFunction */
 }
 
 /**

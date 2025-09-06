@@ -32,8 +32,8 @@ void initializeHistory(){
 
 void applyMovingAverageFilter(float rawReadings[]){
 	float currentReading;
-	long sumOfReadings;
-	int divisor;
+	float sumOfReadings;
+	float divisor;
 
 	for(int i = 0; i < numberOfThermistors; i++){
 		currentReading = convertVoltageToTemperature(rawReadings[i]);
