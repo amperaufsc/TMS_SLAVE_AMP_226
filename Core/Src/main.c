@@ -62,7 +62,10 @@ const osThreadAttr_t sendCAN_attributes = {
   .stack_size = 128 * 4
 };
 /* USER CODE BEGIN PV */
-float rawAdcBuffer[numberOfThermistors], voltageBuffer[numberOfThermistors], rawTempBuffer[numberOfThermistors], filteredTempBuffer[numberOfThermistors];
+float rawAdcBuffer[numberOfThermistors], voltageBuffer[numberOfThermistors], rawTempBuffer[numberOfThermistors];
+extern uint8_t FDCAN1TxData[8];
+extern FDCAN_TxHeaderTypeDef FDCAN1TxHeader;
+extern float filteredReadings[numberOfThermistors];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -116,7 +119,7 @@ int main(void)
   MX_FDCAN1_Init();
   MX_ADC2_Init();
   /* USER CODE BEGIN 2 */
-
+  initializeHistory();
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -536,20 +539,20 @@ void sendCANFunction(void *argument)
 	  static int burst = 0;
 
 	  if (burst%3 == 0){
-		  sendTemperatureToMaster0(filteredTempBuffer);
-		  sendTemperatureToMaster1(filteredTempBuffer);
-		  sendTemperatureToMaster2(filteredTempBuffer);
+		  sendTemperatureToMaster0(filteredReadings);
+		  sendTemperatureToMaster1(filteredReadings);
+		  sendTemperatureToMaster2(filteredReadings);
 	  }
 
 	  else if (burst%3 == 1){
-		  sendTemperatureToMaster3(filteredTempBuffer);
-		  sendTemperatureToMaster4(filteredTempBuffer);
-		  sendTemperatureToMaster5(filteredTempBuffer);
+		  sendTemperatureToMaster3(filteredReadings);
+		  sendTemperatureToMaster4(filteredReadings);
+		  sendTemperatureToMaster5(filteredReadings);
 	  }
 
 	  else{
-		  sendTemperatureToMaster6(filteredTempBuffer);
-		  sendTemperatureToMaster7(filteredTempBuffer);
+		  sendTemperatureToMaster6(filteredReadings);
+		  sendTemperatureToMaster7(filteredReadings);
 	  }
 
 	  burst++;

@@ -1,2 +1,4 @@
-../Core/Src/adc.c:11:7:convertBitsToVoltage	16	static
-../Core/Src/adc.c:15:7:convertVoltageToTemperature	24	static
+../Core/Src/adc.c:15:7:convertBitsToVoltage	16	static
+../Core/Src/adc.c:19:7:convertVoltageToTemperature	24	static
+../Core/Src/adc.c:23:6:initializeHistory	16	static
+../Core/Src/adc.c:33:6:applyMovingAverageFilter	40	static

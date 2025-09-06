@@ -24,4 +24,7 @@
 
 float convertBitsToVoltage(uint16_t rawAdcVal);
 float convertVoltageToTemperature(float voltage);
+void initializeHistory();
+void applyMovingAverageFilter(float rawReadings[]);
+
 #endif /* INC_ADC_H_ */
