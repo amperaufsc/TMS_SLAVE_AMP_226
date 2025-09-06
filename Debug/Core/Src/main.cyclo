@@ -4,7 +4,7 @@
 ../Core/Src/main.c:420:13:MX_FDCAN1_Init	2
 ../Core/Src/main.c:462:13:MX_DMA_Init	1
 ../Core/Src/main.c:481:13:MX_GPIO_Init	1
-../Core/Src/main.c:499:6:HAL_ADC_ConvCpltCallback	2
-../Core/Src/main.c:513:6:xReadTempFunction	1
-../Core/Src/main.c:533:6:xSendCANFunction	1
-../Core/Src/main.c:548:6:Error_Handler	1
+../Core/Src/main.c:510:6:HAL_ADC_ConvCpltCallback	2
+../Core/Src/main.c:524:6:xReadTempFunction	1
+../Core/Src/main.c:545:6:xSendCANFunction	3
+../Core/Src/main.c:580:6:Error_Handler	1
