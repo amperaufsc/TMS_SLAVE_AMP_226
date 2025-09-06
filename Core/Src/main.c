@@ -498,7 +498,7 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
 	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-	vTaskNotifyGiveFromISR(readTempHandle, &xHigherPriorityTaskWoken);
+	vTaskNotifyGiveFromISR(xReadTempHandle, &xHigherPriorityTaskWoken);
 	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 /* USER CODE END 4 */
@@ -513,7 +513,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
 void xReadTempFunction(void *argument)
 {
   /* USER CODE BEGIN 5 */
-	readTempHandle = xTaskGetCurrentTaskHandle();
+	xReadTempHandle = xTaskGetCurrentTaskHandle();
   /* Infinite loop */
   for(;;)
   {

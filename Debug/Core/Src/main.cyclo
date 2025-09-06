@@ -5,6 +5,6 @@
 ../Core/Src/main.c:462:13:MX_DMA_Init	1
 ../Core/Src/main.c:481:13:MX_GPIO_Init	1
 ../Core/Src/main.c:499:6:HAL_ADC_ConvCpltCallback	2
-../Core/Src/main.c:513:6:readTempFunction	1
-../Core/Src/main.c:533:6:sendCANFunction	3
-../Core/Src/main.c:568:6:Error_Handler	1
+../Core/Src/main.c:513:6:xReadTempFunction	1
+../Core/Src/main.c:533:6:xSendCANFunction	1
+../Core/Src/main.c:548:6:Error_Handler	1

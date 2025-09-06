@@ -1,8 +1,8 @@
-../Core/Src/can.c:16:6:sendTemperatureToMaster0	1
-../Core/Src/can.c:48:6:sendTemperatureToMaster1	1
-../Core/Src/can.c:80:6:sendTemperatureToMaster2	1
-../Core/Src/can.c:112:6:sendTemperatureToMaster3	1
-../Core/Src/can.c:144:6:sendTemperatureToMaster4	1
-../Core/Src/can.c:176:6:sendTemperatureToMaster5	1
-../Core/Src/can.c:208:6:sendTemperatureToMaster6	1
-../Core/Src/can.c:240:6:sendTemperatureToMaster7	1
+../Core/Src/can.c:16:6:sendTemperatureToMaster0	3
+../Core/Src/can.c:54:6:sendTemperatureToMaster1	3
+../Core/Src/can.c:92:6:sendTemperatureToMaster2	3
+../Core/Src/can.c:130:6:sendTemperatureToMaster3	3
+../Core/Src/can.c:168:6:sendTemperatureToMaster4	3
+../Core/Src/can.c:206:6:sendTemperatureToMaster5	3
+../Core/Src/can.c:244:6:sendTemperatureToMaster6	3
+../Core/Src/can.c:282:6:sendTemperatureToMaster7	3
