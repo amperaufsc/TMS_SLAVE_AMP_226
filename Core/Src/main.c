@@ -452,6 +452,10 @@ static void MX_FDCAN1_Init(void)
   /* USER CODE BEGIN FDCAN1_Init 2 */
   HAL_FDCAN_ActivateNotification(&hfdcan1, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0);
   HAL_FDCAN_Start(&hfdcan1);
+
+  FDCAN1TxHeader.FDFormat = FDCAN_CLASSIC_CAN;
+  FDCAN1TxHeader.IdType = FDCAN_STANDARD_ID;
+  FDCAN1TxHeader.BitRateSwitch = FDCAN_BRS_OFF;
   /* USER CODE END FDCAN1_Init 2 */
 
 }
@@ -529,6 +533,10 @@ void xReadTempFunction(void *argument)
   for(;;)
   {
 	  ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+	  for(int i = 0; i < numberOfThermistors; i++){
+		  rawTempBuffer[i] =  convertVoltageToTemperature(convertBitsToVoltage(rawAdcBuffer[i]));
+	  }
+	  applyMovingAverageFilter(rawTempBuffer);
 
 	osDelay(1);
   }

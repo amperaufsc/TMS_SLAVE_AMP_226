@@ -2,9 +2,9 @@
 ../Core/Src/main.c:179:6:SystemClock_Config	3
 ../Core/Src/main.c:226:13:MX_ADC2_Init	18
 ../Core/Src/main.c:420:13:MX_FDCAN1_Init	2
-../Core/Src/main.c:462:13:MX_DMA_Init	1
-../Core/Src/main.c:481:13:MX_GPIO_Init	1
-../Core/Src/main.c:510:6:HAL_ADC_ConvCpltCallback	2
-../Core/Src/main.c:524:6:xReadTempFunction	1
-../Core/Src/main.c:545:6:xSendCANFunction	3
-../Core/Src/main.c:580:6:Error_Handler	1
+../Core/Src/main.c:466:13:MX_DMA_Init	1
+../Core/Src/main.c:485:13:MX_GPIO_Init	1
+../Core/Src/main.c:514:6:HAL_ADC_ConvCpltCallback	2
+../Core/Src/main.c:528:6:xReadTempFunction	2
+../Core/Src/main.c:553:6:xSendCANFunction	3
+../Core/Src/main.c:588:6:Error_Handler	1

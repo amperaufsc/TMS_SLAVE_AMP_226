@@ -2,9 +2,9 @@
 ../Core/Src/main.c:179:6:SystemClock_Config	88	static
 ../Core/Src/main.c:226:13:MX_ADC2_Init	40	static
 ../Core/Src/main.c:420:13:MX_FDCAN1_Init	8	static
-../Core/Src/main.c:462:13:MX_DMA_Init	16	static
-../Core/Src/main.c:481:13:MX_GPIO_Init	48	static
-../Core/Src/main.c:510:6:HAL_ADC_ConvCpltCallback	24	static,ignoring_inline_asm
-../Core/Src/main.c:524:6:xReadTempFunction	16	static
-../Core/Src/main.c:545:6:xSendCANFunction	16	static
-../Core/Src/main.c:580:6:Error_Handler	8	static,ignoring_inline_asm
+../Core/Src/main.c:466:13:MX_DMA_Init	16	static
+../Core/Src/main.c:485:13:MX_GPIO_Init	48	static
+../Core/Src/main.c:514:6:HAL_ADC_ConvCpltCallback	24	static,ignoring_inline_asm
+../Core/Src/main.c:528:6:xReadTempFunction	24	static
+../Core/Src/main.c:553:6:xSendCANFunction	16	static
+../Core/Src/main.c:588:6:Error_Handler	8	static,ignoring_inline_asm
