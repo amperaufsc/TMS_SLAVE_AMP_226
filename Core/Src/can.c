@@ -42,8 +42,8 @@ void sendTemperatureToMaster0(float buffer[]){
 
 #endif
 
-	while(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData)){
-		int count = 0;
+	while(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData) != HAL_OK){
+		static int count = 0;
 		count++;
 		if (count >= 20){
 			Error_Handler();
@@ -80,8 +80,8 @@ void sendTemperatureToMaster1(float buffer[]){
 
 #endif
 
-	while(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData)){
-		int count = 0;
+	while(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData) != HAL_OK){
+		static int count = 0;
 		count++;
 		if (count >= 20){
 			Error_Handler();
@@ -118,8 +118,8 @@ void sendTemperatureToMaster2(float buffer[]){
 
 #endif
 
-	while(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData)){
-		int count = 0;
+	while(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData) != HAL_OK){
+		static int count = 0;
 		count++;
 		if (count >= 20){
 			Error_Handler();
@@ -156,8 +156,8 @@ void sendTemperatureToMaster3(float buffer[]){
 
 #endif
 
-	while(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData)){
-		int count = 0;
+	while(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData) != HAL_OK){
+		static int count = 0;
 		count++;
 		if (count >= 20){
 			Error_Handler();
@@ -194,8 +194,8 @@ void sendTemperatureToMaster4(float buffer[]){
 
 #endif
 
-	while(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData)){
-		int count = 0;
+	while(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData) != HAL_OK){
+		static int count = 0;
 		count++;
 		if (count >= 20){
 			Error_Handler();
@@ -232,8 +232,8 @@ void sendTemperatureToMaster5(float buffer[]){
 
 #endif
 
-	while(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData)){
-		int count = 0;
+	while(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData) != HAL_OK){
+		static int count = 0;
 		count++;
 		if (count >= 20){
 			Error_Handler();
@@ -270,8 +270,8 @@ void sendTemperatureToMaster6(float buffer[]){
 
 #endif
 
-	while(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData)){
-		int count = 0;
+	while(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData) != HAL_OK){
+		static int count = 0;
 		count++;
 		if (count >= 20){
 			Error_Handler();
@@ -308,8 +308,8 @@ void sendTemperatureToMaster7(float buffer[]){
 
 #endif
 
-	while(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData)){
-		int count = 0;
+	while(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData) != HAL_OK){
+		static int count = 0;
 		count++;
 		if (count >= 20){
 			Error_Handler();
