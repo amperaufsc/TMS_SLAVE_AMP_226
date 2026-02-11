@@ -14,7 +14,7 @@
 #define numberOfThermistors 16
 #define windowSize 10
 #define adcResolution 4095
-#define vcc 3.3
+#define VREF 2.5
 /*T(V) - coefficients*/
 #define C4 (6.03)
 #define C3 (-40.82)

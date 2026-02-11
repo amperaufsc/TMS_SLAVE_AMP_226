@@ -13,7 +13,7 @@ float readingsHistory [numberOfThermistors][windowSize], filteredReadings[number
 int circularIndex [numberOfThermistors] = {0}, validReadingsCount[numberOfThermistors] = {0};
 
 float convertBitsToVoltage(uint16_t rawAdcVal){
-	return (rawAdcVal*vcc)/adcResolution;
+	return (rawAdcVal*VREF)/adcResolution;
 }
 
 float convertVoltageToTemperature(float voltage){
