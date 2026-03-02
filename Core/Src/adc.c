@@ -31,27 +31,20 @@ void initializeHistory(){
 }
 
 void applyMovingAverageFilter(float rawReadings[]){
-	float currentReading;
-	float sumOfReadings;
-	float divisor;
+	for (int i = 0; i < numberOfThermistors; i++) {
 
-	for(int i = 0; i < numberOfThermistors; i++){
-		currentReading = convertVoltageToTemperature(rawReadings[i]);
-		readingsHistory[i][circularIndex[i]] = currentReading;
+		runningSum[i] -= readingsHistory[i][circularIndex[i]];
+
+		readingsHistory[i][circularIndex[i]] = rawReadings[i];
+		runningSum[i] += rawReadings[i];
+
+
 		circularIndex[i] = (circularIndex[i] + 1) % windowSize;
 
-		if (validReadingsCount[i] < windowSize){
+		if (validReadingsCount[i] < windowSize) {
 			validReadingsCount[i]++;
 		}
 
-		sumOfReadings = 0;
-
-		for(int j = 0; j < validReadingsCount[i]; j++){
-			sumOfReadings += readingsHistory[i][j];
-		}
-
-		divisor = validReadingsCount[i];
-
-		filteredReadings[i] = sumOfReadings / divisor;
+		filteredReadings[i] = runningSum[i] / validReadingsCount[i];
 	}
 }
