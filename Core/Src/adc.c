@@ -12,6 +12,12 @@
 float readingsHistory [numberOfThermistors][windowSize], filteredReadings[numberOfThermistors];
 int circularIndex [numberOfThermistors] = {0}, validReadingsCount[numberOfThermistors] = {0};
 
+extern typedef enum {
+    OK = 0,
+    THERM_SHORT,
+    THERM_OPEN,
+} thermStatus;
+
 float convertBitsToVoltage(uint16_t rawAdcVal){
 	return (rawAdcVal*VREF)/adcResolution;
 }
@@ -47,4 +53,14 @@ void applyMovingAverageFilter(float rawReadings[]){
 
 		filteredReadings[i] = runningSum[i] / validReadingsCount[i];
 	}
+}
+
+thermStatus checkThermistorConnection(uint16_t rawAdcVal){
+	if (rawAdcVal <= shortCircuitThreshold){
+		return THERM_SHORT;
+	}
+	if (rawAdcVal >= openCircuitThreshhold){
+		return THERM_SHORT;
+	}
+	return OK;
 }

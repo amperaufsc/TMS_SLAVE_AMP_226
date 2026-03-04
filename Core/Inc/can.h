@@ -55,6 +55,11 @@
 #define idSlave4Burst6 0x046
 #define idSlave4Burst7 0x047
 
+#define idSlave1ThermistorError 0x050
+#define idSlave2ThermistorError 0x051
+#define idSlave3ThermistorError 0x052
+#define idSlave4ThermistorError 0x053
+
 
 void sendTemperatureToMaster0(float buffer[]);
 void sendTemperatureToMaster1(float buffer[]);

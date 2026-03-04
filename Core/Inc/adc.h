@@ -14,7 +14,10 @@
 #define numberOfThermistors 16
 #define windowSize 10
 #define adcResolution 4095
-#define VREF 2.5
+#define VREF 3.3
+#define shortCircuitThreshold 50
+#define openCircuitThreshhold (adcResolution-50)
+
 /*T(V) - coefficients*/
 #define C4 (6.03)
 #define C3 (-40.82)
@@ -22,9 +25,16 @@
 #define C1 (-156.45)
 #define C0 (134.25)
 
+typedef enum {
+    THERM_OK = 0,
+    THERM_SHORT_GND,
+    THERM_OPEN_OR_SHORT_VREF,
+    THERM_TEMP_OUT_OF_RANGE
+} thermStatus;
+
 float convertBitsToVoltage(uint16_t rawAdcVal);
 float convertVoltageToTemperature(float voltage);
 void initializeHistory();
 void applyMovingAverageFilter(float rawReadings[]);
-
+thermStatus checkThermistorConnection(uint16_t rawAdcVal);
 #endif /* INC_ADC_H_ */

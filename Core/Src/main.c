@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include "adc.h"
 #include "can.h"
+#include <stdbool.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -66,6 +67,8 @@ float rawAdcBuffer[numberOfThermistors], voltageBuffer[numberOfThermistors], raw
 extern uint8_t FDCAN1TxData[8];
 extern FDCAN_TxHeaderTypeDef FDCAN1TxHeader;
 extern float filteredReadings[numberOfThermistors];
+int thermistorFault = 0;
+thermStatus readStatus = OK;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -534,7 +537,31 @@ void xReadTempFunction(void *argument)
   {
 	  ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 	  for(int i = 0; i < numberOfThermistors; i++){
-		  rawTempBuffer[i] =  convertVoltageToTemperature(convertBitsToVoltage(rawAdcBuffer[i]));
+		  readStatus = checkThermistorConnection(rawAdcBuffer[i]);
+		  if(readStatus == OK){
+			  rawTempBuffer[i] =  convertVoltageToTemperature(convertBitsToVoltage(rawAdcBuffer[i]));
+		  }
+		  else{
+			  thermistorFault = 1;
+		  }
+	  }
+	  if (thermistorFault != 0){
+#ifdef slave1
+		  FDCAN1TxHeader.Identifier = idSlave1ThermistorError;
+#endif
+#ifdef slave2
+		  FDCAN1TxHeader.Identifier = idSlave2ThermistorError;
+#endif
+#ifdef slave3
+		  FDCAN1TxHeader.Identifier = idSlave3ThermistorError;
+#endif
+#ifdef slave4
+		  FDCAN1TxHeader.Identifier = idSlave4ThermistorError;
+#endif
+
+		  FDCAN1TxData[0] = 67;
+		  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData);
+		  Error_Handler();
 	  }
 	  applyMovingAverageFilter(rawTempBuffer);
 
