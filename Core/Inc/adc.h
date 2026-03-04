@@ -26,10 +26,9 @@
 #define C0 (134.25)
 
 typedef enum {
-    THERM_OK = 0,
-    THERM_SHORT_GND,
-    THERM_OPEN_OR_SHORT_VREF,
-    THERM_TEMP_OUT_OF_RANGE
+    OK = 0,
+    THERM_SHORT,
+    THERM_OPEN,
 } thermStatus;
 
 float convertBitsToVoltage(uint16_t rawAdcVal);

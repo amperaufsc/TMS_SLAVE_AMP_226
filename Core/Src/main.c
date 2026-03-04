@@ -68,7 +68,7 @@ extern uint8_t FDCAN1TxData[8];
 extern FDCAN_TxHeaderTypeDef FDCAN1TxHeader;
 extern float filteredReadings[numberOfThermistors];
 int thermistorFault = 0;
-thermStatus readStatus = OK;
+thermStatus readStatus = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
