@@ -63,10 +63,14 @@ const osThreadAttr_t xSendCAN_attributes = {
   .stack_size = 128 * 4
 };
 /* USER CODE BEGIN PV */
-float rawAdcBuffer[numberOfThermistors], voltageBuffer[numberOfThermistors], rawTempBuffer[numberOfThermistors];
+uint16_t rawAdcBuffer[numberOfThermistors];
+float tempBuffer[numberOfThermistors], voltageBuffer[numberOfThermistors];
+extern uint16_t filteredAdcBuffer[numberOfThermistors];
+
 extern uint8_t FDCAN1TxData[8];
 extern FDCAN_TxHeaderTypeDef FDCAN1TxHeader;
-extern float filteredReadings[numberOfThermistors];
+
+
 int thermistorFault = 0;
 thermStatus readStatus = 0;
 /* USER CODE END PV */
@@ -122,7 +126,6 @@ int main(void)
   MX_FDCAN1_Init();
   MX_ADC2_Init();
   /* USER CODE BEGIN 2 */
-  initializeHistory();
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -531,41 +534,35 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
 void xReadTempFunction(void *argument)
 {
   /* USER CODE BEGIN 5 */
+	static bool filtersInitialized = false;
 	xReadTempHandle = xTaskGetCurrentTaskHandle();
   /* Infinite loop */
   for(;;)
   {
 	  ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+	  if(!filtersInitialized)
+	  {
+		  initTemperatureFilters(rawAdcBuffer);
+		  filtersInitialized = true;
+	  }
+
 	  for(int i = 0; i < numberOfThermistors; i++){
-		  readStatus = checkThermistorConnection(rawAdcBuffer[i]);
+
+		  uint16_t medianADC = applyMedianFilter(rawAdcBuffer[i], i);
+		  filteredAdcBuffer[i] = applyIIRFilter(medianADC, i);
+		  readStatus = checkThermistorConnection(filteredAdcBuffer[i]);
+
 		  if(readStatus == OK){
-			  rawTempBuffer[i] =  convertVoltageToTemperature(convertBitsToVoltage(rawAdcBuffer[i]));
+			  tempBuffer[i] = convertVoltageToTemperature(convertBitsToVoltage(filteredAdcBuffer[i]));
 		  }
 		  else{
 			  thermistorFault = 1;
+			  sendReadingErrorInfoIntoCAN();
+			  Error_Handler();
 		  }
 	  }
-	  if (thermistorFault != 0){
-#ifdef slave1
-		  FDCAN1TxHeader.Identifier = idSlave1ThermistorError;
-#endif
-#ifdef slave2
-		  FDCAN1TxHeader.Identifier = idSlave2ThermistorError;
-#endif
-#ifdef slave3
-		  FDCAN1TxHeader.Identifier = idSlave3ThermistorError;
-#endif
-#ifdef slave4
-		  FDCAN1TxHeader.Identifier = idSlave4ThermistorError;
-#endif
-
-		  FDCAN1TxData[0] = 67;
-		  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData);
-		  Error_Handler();
-	  }
-	  applyMovingAverageFilter(rawTempBuffer);
-
-	osDelay(1);
+	  osDelay(1);
   }
   /* USER CODE END 5 */
 }
@@ -583,25 +580,8 @@ void xSendCANFunction(void *argument)
   /* Infinite loop */
   for(;;)
   {
-	  static int burst = 0;
-
-	  if(burst % 3 == 0){
-		  sendTemperatureToMaster0(filteredReadings);
-		  sendTemperatureToMaster1(filteredReadings);
-		  sendTemperatureToMaster2(filteredReadings);
-	  }
-	  else if(burst % 3 == 1){
-		  sendTemperatureToMaster3(filteredReadings);
-		  sendTemperatureToMaster4(filteredReadings);
-		  sendTemperatureToMaster5(filteredReadings);
-	  }
-	  else{
-		  sendTemperatureToMaster6(filteredReadings);
-		  sendTemperatureToMaster7(filteredReadings);
-	  }
-
+	  sendTemperatureToMaster(tempBuffer);
 	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);
-	  burst++;
 
     osDelay(100);
   }

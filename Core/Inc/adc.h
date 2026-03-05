@@ -12,11 +12,10 @@
 #include "cmsis_os.h"
 
 #define numberOfThermistors 16
-#define windowSize 10
 #define adcResolution 4095
-#define VREF 3.3
-#define shortCircuitThreshold 50
-#define openCircuitThreshhold (adcResolution-50)
+#define vcc 3.3
+#define shortCircuitThreshold 100
+#define openCircuitThreshhold (adcResolution-100)
 
 /*T(V) - coefficients*/
 #define C4 (6.03)
@@ -31,9 +30,12 @@ typedef enum {
     THERM_OPEN,
 } thermStatus;
 
+uint16_t median3(uint16_t a, uint16_t b, uint16_t c);
+uint16_t applyMedianFilter(uint16_t newReading, uint8_t index);
+uint16_t applyIIRFilter(uint16_t newReading, uint8_t index);
 float convertBitsToVoltage(uint16_t rawAdcVal);
 float convertVoltageToTemperature(float voltage);
-void initializeHistory();
-void applyMovingAverageFilter(float rawReadings[]);
 thermStatus checkThermistorConnection(uint16_t rawAdcVal);
+void initTemperatureFilters(uint16_t rawAdcBuffer[]);
+
 #endif /* INC_ADC_H_ */
