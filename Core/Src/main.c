@@ -580,7 +580,18 @@ void xSendCANFunction(void *argument)
   /* Infinite loop */
   for(;;)
   {
-	  sendTemperatureToMaster(tempBuffer);
+#ifdef slave1
+	  sendTemperatureToMaster(tempBuffer, idSlave1Burst0);
+#endif
+#ifdef slave2
+	  sendTemperatureToMaster(tempBuffer, idSlave2Burst0);
+#endif
+#ifdef slave3
+	  sendTemperatureToMaster(tempBuffer, idSlave3Burst0);
+#endif
+#ifdef slave4
+	  sendTemperatureToMaster(tempBuffer, idSlave4Burst0);
+#endif
 	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);
 
     osDelay(100);

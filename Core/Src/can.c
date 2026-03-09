@@ -13,25 +13,33 @@ extern FDCAN_HandleTypeDef hfdcan1;
 uint8_t FDCAN1TxData[8];
 FDCAN_TxHeaderTypeDef FDCAN1TxHeader;
 
-void sendTemperatureToMaster(float buffer[])
-{
-	for(int i = 0; i < numberOfThermistors; i += 2)
-	{
-		FDCAN1TxHeader.DataLength = FDCAN_DLC_BYTES_8;
-		FDCAN1TxHeader.Identifier = idSlave1Burst0 + (i/2);
+void sendTemperatureToMaster(float buffer[],uint16_t baseID){
 
-		memcpy(&FDCAN1TxData[0], &buffer[i], sizeof(float));
-		memcpy(&FDCAN1TxData[4], &buffer[i+1], sizeof(float));
+	float *canPayload = (float*)FDCAN1TxData;
+
+	uint8_t frames = (numberOfThermistors + 1) / 2;
+
+	for(uint8_t frame = 0; frame < frames; frame++)
+	{
+		uint8_t i = frame * 2;
+
+		FDCAN1TxHeader.DataLength = FDCAN_DLC_BYTES_8;
+		FDCAN1TxHeader.Identifier = baseID + frame;
+
+		canPayload[0] = buffer[i];
+		canPayload[1] = (i + 1 < numberOfThermistors) ? buffer[i+1] : buffer[i];
 
 		uint8_t retry = 0;
 
-		while(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData) != HAL_OK){
-			retry++;
-			if (retry >= 20){
+		while(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader, FDCAN1TxData) != HAL_OK)
+		{
+			if(++retry >= 20)
+			{
 				Error_Handler();
 			}
 		}
 	}
+
 }
 
 void sendReadingErrorInfoIntoCAN(void){

@@ -32,7 +32,7 @@
 #define idSlave3ThermistorError 0x052
 #define idSlave4ThermistorError 0x053
 
-void sendTemperatureToMaster(float buffer[]);
+void sendTemperatureToMaster(float buffer[], uint16_t baseID);
 void sendReadingErrorInfoIntoCAN(void);
 
 #endif /* INC_CAN_H_ */
