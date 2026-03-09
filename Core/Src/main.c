@@ -539,7 +539,7 @@ void xReadTempFunction(void *argument)
   /* Infinite loop */
   for(;;)
   {
-	  ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+//	  ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
 	  if(!filtersInitialized)
 	  {

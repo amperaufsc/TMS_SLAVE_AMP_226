@@ -1,2 +1,2 @@
-../Core/Src/can.c:16:6:sendTemperatureToMaster	4
-../Core/Src/can.c:38:6:sendReadingErrorInfoIntoCAN	3
+../Core/Src/can.c:16:6:sendTemperatureToMaster	5
+../Core/Src/can.c:45:6:sendReadingErrorInfoIntoCAN	3

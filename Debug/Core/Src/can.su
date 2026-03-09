@@ -1,2 +1,2 @@
-../Core/Src/can.c:16:6:sendTemperatureToMaster	24	static
-../Core/Src/can.c:38:6:sendReadingErrorInfoIntoCAN	8	static
+../Core/Src/can.c:16:6:sendTemperatureToMaster	32	static
+../Core/Src/can.c:45:6:sendReadingErrorInfoIntoCAN	8	static
