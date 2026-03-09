@@ -17,7 +17,7 @@ void sendTemperatureToMaster(float buffer[])
 {
 	for(int i = 0; i < numberOfThermistors; i += 2)
 	{
-		FDCAN1TxHeader.DataLength = 8;
+		FDCAN1TxHeader.DataLength = FDCAN_DLC_BYTES_8;
 		FDCAN1TxHeader.Identifier = idSlave1Burst0 + (i/2);
 
 		memcpy(&FDCAN1TxData[0], &buffer[i], sizeof(float));
