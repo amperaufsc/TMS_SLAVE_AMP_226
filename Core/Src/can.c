@@ -23,8 +23,6 @@ void sendTemperatureToMaster(float buffer[])
 		memcpy(&FDCAN1TxData[0], &buffer[i], sizeof(float));
 		memcpy(&FDCAN1TxData[4], &buffer[i+1], sizeof(float));
 
-		uint8_t retry = 0;
-
 		while(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData) != HAL_OK){
 			static int retry = 0;
 			retry++;
