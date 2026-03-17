@@ -535,7 +535,7 @@ void xReadTempFunction(void *argument)
 {
   /* USER CODE BEGIN 5 */
 	static bool filtersInitialized = false;
-	xReadTempHandle = xTaskGetCurrentTaskHandle();
+	// xReadTempHandle = xTaskGetCurrentTaskHandle();
   /* Infinite loop */
   for(;;)
   {
