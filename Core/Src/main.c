@@ -25,6 +25,7 @@
 #include "adc.h"
 #include "can.h"
 #include <stdbool.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -63,6 +64,11 @@ const osThreadAttr_t xSendCAN_attributes = {
   .stack_size = 128 * 4
 };
 /* USER CODE BEGIN PV */
+osMutexId_t tempBufferMutexHandle;
+const osMutexAttr_t tempBufferMutex_attributes = {
+  .name = "tempBufferMutex"
+};
+
 uint16_t rawAdcBuffer[numberOfThermistors];
 float tempBuffer[numberOfThermistors], voltageBuffer[numberOfThermistors];
 extern uint16_t filteredAdcBuffer[numberOfThermistors];
@@ -133,6 +139,7 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
+  tempBufferMutexHandle = osMutexNew(&tempBufferMutex_attributes);
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
@@ -257,7 +264,7 @@ static void MX_ADC2_Init(void)
   hadc2.Init.DiscontinuousConvMode = DISABLE;
   hadc2.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc2.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
-  hadc2.Init.DMAContinuousRequests = DISABLE;
+  hadc2.Init.DMAContinuousRequests = ENABLE;
   hadc2.Init.Overrun = ADC_OVR_DATA_PRESERVED;
   hadc2.Init.OversamplingMode = DISABLE;
   if (HAL_ADC_Init(&hadc2) != HAL_OK)
@@ -539,7 +546,7 @@ void xReadTempFunction(void *argument)
   /* Infinite loop */
   for(;;)
   {
-//	  ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+	  ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
 	  if(!filtersInitialized)
 	  {
@@ -554,7 +561,10 @@ void xReadTempFunction(void *argument)
 		  readStatus = checkThermistorConnection(filteredAdcBuffer[i]);
 
 		  if(readStatus == OK){
-			  tempBuffer[i] = convertVoltageToTemperature(convertBitsToVoltage(filteredAdcBuffer[i]));
+			  if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
+				  tempBuffer[i] = convertVoltageToTemperature(convertBitsToVoltage(filteredAdcBuffer[i]));
+				  osMutexRelease(tempBufferMutexHandle);
+			  }
 		  }
 		  else{
 			  thermistorFault = 1;
@@ -562,7 +572,6 @@ void xReadTempFunction(void *argument)
 			  Error_Handler();
 		  }
 	  }
-	  osDelay(1);
   }
   /* USER CODE END 5 */
 }
@@ -577,20 +586,26 @@ void xReadTempFunction(void *argument)
 void xSendCANFunction(void *argument)
 {
   /* USER CODE BEGIN xSendCANFunction */
+  float localTempBuffer[numberOfThermistors];
   /* Infinite loop */
   for(;;)
   {
+	  if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
+		  memcpy(localTempBuffer, tempBuffer, sizeof(localTempBuffer));
+		  osMutexRelease(tempBufferMutexHandle);
+	  }
+
 #ifdef slave1
-	  sendTemperatureToMaster(tempBuffer, idSlave1Burst0);
+	  sendTemperatureToMaster(localTempBuffer, idSlave1Burst0);
 #endif
 #ifdef slave2
-	  sendTemperatureToMaster(tempBuffer, idSlave2Burst0);
+	  sendTemperatureToMaster(localTempBuffer, idSlave2Burst0);
 #endif
 #ifdef slave3
-	  sendTemperatureToMaster(tempBuffer, idSlave3Burst0);
+	  sendTemperatureToMaster(localTempBuffer, idSlave3Burst0);
 #endif
 #ifdef slave4
-	  sendTemperatureToMaster(tempBuffer, idSlave4Burst0);
+	  sendTemperatureToMaster(localTempBuffer, idSlave4Burst0);
 #endif
 	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);
 
