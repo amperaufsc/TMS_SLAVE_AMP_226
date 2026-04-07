@@ -1,20 +1,20 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2025 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file           : main.c
+ * @brief          : Main program body
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2025 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -65,9 +65,7 @@ const osThreadAttr_t xSendCAN_attributes = {
 };
 /* USER CODE BEGIN PV */
 osMutexId_t tempBufferMutexHandle;
-const osMutexAttr_t tempBufferMutex_attributes = {
-  .name = "tempBufferMutex"
-};
+const osMutexAttr_t tempBufferMutex_attributes = {.name = "tempBufferMutex"};
 
 uint16_t rawAdcBuffer[numberOfThermistors];
 float tempBuffer[numberOfThermistors], voltageBuffer[numberOfThermistors];
@@ -75,7 +73,6 @@ extern uint16_t filteredAdcBuffer[numberOfThermistors];
 
 extern uint8_t FDCAN1TxData[8];
 extern FDCAN_TxHeaderTypeDef FDCAN1TxHeader;
-
 
 int thermistorFault = 0;
 thermStatus readStatus = 0;
@@ -176,8 +173,7 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
+  while (1) {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -196,7 +192,7 @@ void SystemClock_Config(void)
 
   /** Configure the main internal regulator output voltage
   */
-  HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1_BOOST);
+  HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1);
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
@@ -221,11 +217,11 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV2;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_4) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
   }
@@ -264,7 +260,7 @@ static void MX_ADC2_Init(void)
   hadc2.Init.DiscontinuousConvMode = DISABLE;
   hadc2.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc2.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
-  hadc2.Init.DMAContinuousRequests = ENABLE;
+  hadc2.Init.DMAContinuousRequests = DISABLE;
   hadc2.Init.Overrun = ADC_OVR_DATA_PRESERVED;
   hadc2.Init.OversamplingMode = DISABLE;
   if (HAL_ADC_Init(&hadc2) != HAL_OK)
@@ -420,7 +416,8 @@ static void MX_ADC2_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN ADC2_Init 2 */
-  HAL_ADC_Start_DMA(&hadc2, (uint32_t*) rawAdcBuffer, numberOfThermistors);
+  // O Start do ADC com DMA foi movido para a thread (xReadTempFunction) para
+  // evitar HardFault
   /* USER CODE END ADC2_Init 2 */
 
 }
@@ -524,90 +521,89 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
-	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-	vTaskNotifyGiveFromISR(xReadTempHandle, &xHigherPriorityTaskWoken);
-	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
+  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+  vTaskNotifyGiveFromISR(xReadTempHandle, &xHigherPriorityTaskWoken);
+  portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_xReadTempFunction */
 /**
-  * @brief  Function implementing the xReadTemp thread.
-  * @param  argument: Not used
-  * @retval None
-  */
+ * @brief  Function implementing the xReadTemp thread.
+ * @param  argument: Not used
+ * @retval None
+ */
 /* USER CODE END Header_xReadTempFunction */
 void xReadTempFunction(void *argument)
 {
   /* USER CODE BEGIN 5 */
-	static bool filtersInitialized = false;
-	// xReadTempHandle = xTaskGetCurrentTaskHandle();
+  static bool filtersInitialized = false;
+  // xReadTempHandle = xTaskGetCurrentTaskHandle();
+  HAL_ADC_Start_DMA(&hadc2, (uint32_t *)rawAdcBuffer, numberOfThermistors);
   /* Infinite loop */
-  for(;;)
-  {
-	  ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+  for (;;) {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-	  if(!filtersInitialized)
-	  {
-		  initTemperatureFilters(rawAdcBuffer);
-		  filtersInitialized = true;
-	  }
+    if (!filtersInitialized) {
+      initTemperatureFilters(rawAdcBuffer);
+      filtersInitialized = true;
+    }
 
-	  for(int i = 0; i < numberOfThermistors; i++){
+    for (int i = 0; i < numberOfThermistors; i++) {
 
-		  uint16_t medianADC = applyMedianFilter(rawAdcBuffer[i], i);
-		  filteredAdcBuffer[i] = applyIIRFilter(medianADC, i);
-		  readStatus = checkThermistorConnection(filteredAdcBuffer[i]);
+      uint16_t medianADC = applyMedianFilter(rawAdcBuffer[i], i);
+      filteredAdcBuffer[i] = applyIIRFilter(medianADC, i);
+      readStatus = checkThermistorConnection(filteredAdcBuffer[i]);
 
-		  if(readStatus == OK){
-			  if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
-				  tempBuffer[i] = convertVoltageToTemperature(convertBitsToVoltage(filteredAdcBuffer[i]));
-				  osMutexRelease(tempBufferMutexHandle);
-			  }
-		  }
-		  else{
-			  thermistorFault = 1;
-			  sendReadingErrorInfoIntoCAN();
-			  Error_Handler();
-		  }
-	  }
+//      if (readStatus == OK) {
+        if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
+          tempBuffer[i] = convertVoltageToTemperature(
+              convertBitsToVoltage(filteredAdcBuffer[i]));
+          osMutexRelease(tempBufferMutexHandle);
+        }
+//      }
+        else {
+        thermistorFault = 1;
+//        sendReadingErrorInfoIntoCAN();
+//        Error_Handler();
+      }
+    }
   }
   /* USER CODE END 5 */
 }
 
 /* USER CODE BEGIN Header_xSendCANFunction */
 /**
-* @brief Function implementing the xSendCAN thread.
-* @param argument: Not used
-* @retval None
-*/
+ * @brief Function implementing the xSendCAN thread.
+ * @param argument: Not used
+ * @retval None
+ */
 /* USER CODE END Header_xSendCANFunction */
 void xSendCANFunction(void *argument)
 {
   /* USER CODE BEGIN xSendCANFunction */
   float localTempBuffer[numberOfThermistors];
   /* Infinite loop */
-  for(;;)
-  {
-	  if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
-		  memcpy(localTempBuffer, tempBuffer, sizeof(localTempBuffer));
-		  osMutexRelease(tempBufferMutexHandle);
-	  }
+  for (;;) {
+    if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
+      memcpy(localTempBuffer, tempBuffer, sizeof(localTempBuffer));
+      osMutexRelease(tempBufferMutexHandle);
+    }
 
 #ifdef slave1
-	  sendTemperatureToMaster(localTempBuffer, idSlave1Burst0);
+//    sendTemperatureToMaster(localTempBuffer, idSlave1Burst0);
 #endif
 #ifdef slave2
-	  sendTemperatureToMaster(localTempBuffer, idSlave2Burst0);
+    sendTemperatureToMaster(localTempBuffer, idSlave2Burst0);
 #endif
 #ifdef slave3
-	  sendTemperatureToMaster(localTempBuffer, idSlave3Burst0);
+    sendTemperatureToMaster(localTempBuffer, idSlave3Burst0);
 #endif
 #ifdef slave4
-	  sendTemperatureToMaster(localTempBuffer, idSlave4Burst0);
+    sendTemperatureToMaster(localTempBuffer, idSlave4Burst0);
 #endif
-	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);
+    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);
 
     osDelay(100);
   }
@@ -621,11 +617,10 @@ void xSendCANFunction(void *argument)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, SET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, SET);
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
-  while (1)
-  {
+  while (1) {
   }
   /* USER CODE END Error_Handler_Debug */
 }
@@ -641,8 +636,9 @@ void Error_Handler(void)
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* User can add his own implementation to report the file name and line
+     number, ex: printf("Wrong parameters value: file %s on line %d\r\n", file,
+     line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
