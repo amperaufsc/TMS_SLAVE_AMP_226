@@ -33,9 +33,10 @@ void sendTemperatureToMaster(float buffer[],uint16_t baseID){
 
 		while(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader, FDCAN1TxData) != HAL_OK)
 		{
+			osDelay(1); // Espera 1 milissegundo pelo hardware CAN desocupar a fila
 			if(++retry >= 20)
 			{
-				Error_Handler();
+				break; // Em vez de HardFault/Error_Handler, apenas descarta a mensagem após 20ms falhando
 			}
 		}
 	}
@@ -60,9 +61,11 @@ void sendReadingErrorInfoIntoCAN(void){
 	FDCAN1TxData[0] = 67;
 	while(HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader,  FDCAN1TxData) != HAL_OK){
 		static int retry = 0;
+		osDelay(1);
 		retry++;
 		if (retry >= 20){
-			Error_Handler();
+			retry = 0;
+			break; // Descarta erro se rede CAN estiver inoperante (evita Freeze total)
 		}
 	}
 }

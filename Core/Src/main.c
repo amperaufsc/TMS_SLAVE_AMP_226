@@ -416,8 +416,7 @@ static void MX_ADC2_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN ADC2_Init 2 */
-  // O Start do ADC com DMA foi movido para a thread (xReadTempFunction) para
-  // evitar HardFault
+  HAL_ADC_Start_DMA(&hadc2, (uint32_t*) rawAdcBuffer, numberOfThermistors);
   /* USER CODE END ADC2_Init 2 */
 
 }
@@ -521,10 +520,10 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
-  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-  vTaskNotifyGiveFromISR(xReadTempHandle, &xHigherPriorityTaskWoken);
-  portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	vTaskNotifyGiveFromISR(xReadTempHandle, &xHigherPriorityTaskWoken);
+	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 /* USER CODE END 4 */
 
@@ -538,37 +537,41 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
 void xReadTempFunction(void *argument)
 {
   /* USER CODE BEGIN 5 */
-  static bool filtersInitialized = false;
-  // xReadTempHandle = xTaskGetCurrentTaskHandle();
-  HAL_ADC_Start_DMA(&hadc2, (uint32_t *)rawAdcBuffer, numberOfThermistors);
+	static bool filtersInitialized = false;
+	// xReadTempHandle = xTaskGetCurrentTaskHandle();
   /* Infinite loop */
-  for (;;) {
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+  for(;;)
+  {
+      HAL_ADC_Start_DMA(&hadc2, (uint32_t*) rawAdcBuffer, numberOfThermistors);
+	  ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+      HAL_ADC_Stop_DMA(&hadc2);
 
-    if (!filtersInitialized) {
-      initTemperatureFilters(rawAdcBuffer);
-      filtersInitialized = true;
-    }
+	  if(!filtersInitialized)
+	  {
+		  initTemperatureFilters(rawAdcBuffer);
+		  filtersInitialized = true;
+	  }
 
-    for (int i = 0; i < numberOfThermistors; i++) {
+	  for(int i = 0; i < numberOfThermistors; i++){
 
-      uint16_t medianADC = applyMedianFilter(rawAdcBuffer[i], i);
-      filteredAdcBuffer[i] = applyIIRFilter(medianADC, i);
-      readStatus = checkThermistorConnection(filteredAdcBuffer[i]);
+		  uint16_t medianADC = applyMedianFilter(rawAdcBuffer[i], i);
+		  filteredAdcBuffer[i] = applyIIRFilter(medianADC, i);
+		  readStatus = checkThermistorConnection(filteredAdcBuffer[i]);
 
-//      if (readStatus == OK) {
-        if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
-          tempBuffer[i] = convertVoltageToTemperature(
-              convertBitsToVoltage(filteredAdcBuffer[i]));
-          osMutexRelease(tempBufferMutexHandle);
-        }
-//      }
-        else {
-        thermistorFault = 1;
-//        sendReadingErrorInfoIntoCAN();
-//        Error_Handler();
-      }
-    }
+          // --- BYPASS DE VALIDAÇÃO (Ignora erro de termistor solto) ---
+		  // if(readStatus == OK){
+              if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
+			      tempBuffer[i] = convertVoltageToTemperature(convertBitsToVoltage(filteredAdcBuffer[i]));
+                  osMutexRelease(tempBufferMutexHandle);
+              }
+		  // }
+		  // else{
+		  //	  thermistorFault = 1;
+		  //	  sendReadingErrorInfoIntoCAN();
+		  //	  Error_Handler();
+		  // }
+	  }
+	  osDelay(100);
   }
   /* USER CODE END 5 */
 }
@@ -585,25 +588,26 @@ void xSendCANFunction(void *argument)
   /* USER CODE BEGIN xSendCANFunction */
   float localTempBuffer[numberOfThermistors];
   /* Infinite loop */
-  for (;;) {
-    if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
-      memcpy(localTempBuffer, tempBuffer, sizeof(localTempBuffer));
-      osMutexRelease(tempBufferMutexHandle);
-    }
+  for(;;)
+  {
+      if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
+          memcpy(localTempBuffer, tempBuffer, sizeof(localTempBuffer));
+          osMutexRelease(tempBufferMutexHandle);
+      }
 
 #ifdef slave1
-//    sendTemperatureToMaster(localTempBuffer, idSlave1Burst0);
+//	  sendTemperatureToMaster(localTempBuffer, idSlave1Burst0);
 #endif
 #ifdef slave2
-    sendTemperatureToMaster(localTempBuffer, idSlave2Burst0);
+	  sendTemperatureToMaster(localTempBuffer, idSlave2Burst0);
 #endif
 #ifdef slave3
-    sendTemperatureToMaster(localTempBuffer, idSlave3Burst0);
+	  sendTemperatureToMaster(localTempBuffer, idSlave3Burst0);
 #endif
 #ifdef slave4
-    sendTemperatureToMaster(localTempBuffer, idSlave4Burst0);
+	  sendTemperatureToMaster(localTempBuffer, idSlave4Burst0);
 #endif
-    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);
+	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);
 
     osDelay(100);
   }
