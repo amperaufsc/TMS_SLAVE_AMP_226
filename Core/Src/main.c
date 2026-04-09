@@ -596,7 +596,7 @@ void xSendCANFunction(void *argument)
       }
 
 #ifdef slave1
-//	  sendTemperatureToMaster(localTempBuffer, idSlave1Burst0);
+	  sendTemperatureToMaster(localTempBuffer, idSlave1Burst0);
 #endif
 #ifdef slave2
 	  sendTemperatureToMaster(localTempBuffer, idSlave2Burst0);
@@ -607,7 +607,7 @@ void xSendCANFunction(void *argument)
 #ifdef slave4
 	  sendTemperatureToMaster(localTempBuffer, idSlave4Burst0);
 #endif
-	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);
+	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_7);
 
     osDelay(100);
   }
