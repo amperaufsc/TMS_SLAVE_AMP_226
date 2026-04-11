@@ -24,8 +24,11 @@
 /* USER CODE BEGIN Includes */
 #include "adc.h"
 #include "can.h"
+#include "queue.h"
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -74,8 +77,16 @@ extern uint16_t filteredAdcBuffer[numberOfThermistors];
 extern uint8_t FDCAN1TxData[8];
 extern FDCAN_TxHeaderTypeDef FDCAN1TxHeader;
 
+osMessageQueueId_t canRxQueueHandle;
+
+CAN_RxMsg_t lastRxMsg;
+
 int thermistorFault = 0;
 thermStatus readStatus = 0;
+CAN_TxStatus_t lastTxStatus = CAN_TX_OK;
+uint32_t rxCount = 0;       // Total de mensagens CAN recebidas (Live Expressions)
+uint32_t rxLastId = 0;      // Último ID CAN recebido (Live Expressions)
+uint8_t  rxBurstCount = 0;  // Quantas msgs foram drenadas na última iteração
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -89,6 +100,8 @@ void xSendCANFunction(void *argument);
 
 /* USER CODE BEGIN PFP */
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc);
+void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
+                               uint32_t RxFifo0ITs);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -148,7 +161,8 @@ int main(void)
   /* USER CODE END RTOS_TIMERS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
-  /* add queues, ... */
+  canRxQueueHandle =
+      osMessageQueueNew(CAN_RX_QUEUE_SIZE, sizeof(CAN_RxMsg_t), NULL);
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
@@ -443,15 +457,15 @@ static void MX_FDCAN1_Init(void)
   hfdcan1.Init.AutoRetransmission = DISABLE;
   hfdcan1.Init.TransmitPause = DISABLE;
   hfdcan1.Init.ProtocolException = DISABLE;
-  hfdcan1.Init.NominalPrescaler = 10;
+  hfdcan1.Init.NominalPrescaler = 5;
   hfdcan1.Init.NominalSyncJumpWidth = 1;
-  hfdcan1.Init.NominalTimeSeg1 = 22;
-  hfdcan1.Init.NominalTimeSeg2 = 11;
+  hfdcan1.Init.NominalTimeSeg1 = 26;
+  hfdcan1.Init.NominalTimeSeg2 = 7;
   hfdcan1.Init.DataPrescaler = 1;
   hfdcan1.Init.DataSyncJumpWidth = 1;
   hfdcan1.Init.DataTimeSeg1 = 1;
   hfdcan1.Init.DataTimeSeg2 = 1;
-  hfdcan1.Init.StdFiltersNbr = 0;
+  hfdcan1.Init.StdFiltersNbr = 1;
   hfdcan1.Init.ExtFiltersNbr = 0;
   hfdcan1.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
   if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK)
@@ -459,6 +473,19 @@ static void MX_FDCAN1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN FDCAN1_Init 2 */
+  FDCAN_FilterTypeDef sFilterConfig;
+
+  sFilterConfig.IdType = FDCAN_STANDARD_ID;
+  sFilterConfig.FilterIndex = 0;
+  sFilterConfig.FilterType = FDCAN_FILTER_MASK;
+  sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
+  sFilterConfig.FilterID1 = 0;
+  sFilterConfig.FilterID2 = 0;
+
+  if (HAL_FDCAN_ConfigFilter(&hfdcan1, &sFilterConfig) != HAL_OK) {
+    Error_Handler();
+  }
+
   HAL_FDCAN_ActivateNotification(&hfdcan1, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0);
   HAL_FDCAN_Start(&hfdcan1);
 
@@ -505,14 +532,14 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(userLED_GPIO_Port, userLED_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7|userLED_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : userLED_Pin */
-  GPIO_InitStruct.Pin = userLED_Pin;
+  /*Configure GPIO pins : PC7 userLED_Pin */
+  GPIO_InitStruct.Pin = GPIO_PIN_7|userLED_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(userLED_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -520,10 +547,29 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
-	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-	vTaskNotifyGiveFromISR(xReadTempHandle, &xHigherPriorityTaskWoken);
-	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
+  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+  vTaskNotifyGiveFromISR(xReadTempHandle, &xHigherPriorityTaskWoken);
+  portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
+
+void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
+                               uint32_t RxFifo0ITs) {
+  if (hfdcan->Instance == FDCAN1) {
+    if ((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET) {
+      CAN_RxMsg_t rxMsg; // Variável LOCAL na stack (sem global compartilhada)
+      BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+      /* Lê a mensagem do hardware para a struct local */
+      if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &rxMsg.header,
+                                 rxMsg.data) == HAL_OK) {
+        xQueueSendFromISR((QueueHandle_t)canRxQueueHandle, &rxMsg,
+                          &xHigherPriorityTaskWoken);
+        portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+      }
+      // Se GetRxMessage falhou, ignora (quadro corrompido/colisão)
+    }
+  }
 }
 /* USER CODE END 4 */
 
@@ -537,41 +583,40 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){
 void xReadTempFunction(void *argument)
 {
   /* USER CODE BEGIN 5 */
-	static bool filtersInitialized = false;
-	// xReadTempHandle = xTaskGetCurrentTaskHandle();
+  static bool filtersInitialized = false;
+  // xReadTempHandle = xTaskGetCurrentTaskHandle();
   /* Infinite loop */
-  for(;;)
-  {
-      HAL_ADC_Start_DMA(&hadc2, (uint32_t*) rawAdcBuffer, numberOfThermistors);
-	  ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-      HAL_ADC_Stop_DMA(&hadc2);
+  for (;;) {
+    HAL_ADC_Start_DMA(&hadc2, (uint32_t *)rawAdcBuffer, numberOfThermistors);
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    HAL_ADC_Stop_DMA(&hadc2);
 
-	  if(!filtersInitialized)
-	  {
-		  initTemperatureFilters(rawAdcBuffer);
-		  filtersInitialized = true;
-	  }
+    if (!filtersInitialized) {
+      initTemperatureFilters(rawAdcBuffer);
+      filtersInitialized = true;
+    }
 
-	  for(int i = 0; i < numberOfThermistors; i++){
+    for (int i = 0; i < numberOfThermistors; i++) {
 
-		  uint16_t medianADC = applyMedianFilter(rawAdcBuffer[i], i);
-		  filteredAdcBuffer[i] = applyIIRFilter(medianADC, i);
-		  readStatus = checkThermistorConnection(filteredAdcBuffer[i]);
+      uint16_t medianADC = applyMedianFilter(rawAdcBuffer[i], i);
+      filteredAdcBuffer[i] = applyIIRFilter(medianADC, i);
+      readStatus = checkThermistorConnection(filteredAdcBuffer[i]);
 
-          // --- BYPASS DE VALIDAÇÃO (Ignora erro de termistor solto) ---
-		  // if(readStatus == OK){
-              if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
-			      tempBuffer[i] = convertVoltageToTemperature(convertBitsToVoltage(filteredAdcBuffer[i]));
-                  osMutexRelease(tempBufferMutexHandle);
-              }
-		  // }
-		  // else{
-		  //	  thermistorFault = 1;
-		  //	  sendReadingErrorInfoIntoCAN();
-		  //	  Error_Handler();
-		  // }
-	  }
-	  osDelay(100);
+//      if(readStatus == OK){
+    	  if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
+    		  tempBuffer[i] = convertVoltageToTemperature(
+    				  convertBitsToVoltage(filteredAdcBuffer[i]));
+    		  osMutexRelease(tempBufferMutexHandle);
+    	  }
+//      }
+//      else{
+//    	  thermistorFault = 1;
+//    	  sendReadingErrorInfoIntoCAN();
+//    	  osDelay(5); // Garante que o hardware CAN transmita o erro antes de prosseguir
+//    	  Error_Handler();
+//      }
+    }
+    osDelay(100);
   }
   /* USER CODE END 5 */
 }
@@ -587,27 +632,38 @@ void xSendCANFunction(void *argument)
 {
   /* USER CODE BEGIN xSendCANFunction */
   float localTempBuffer[numberOfThermistors];
+  CAN_RxMsg_t rxMsg;
   /* Infinite loop */
-  for(;;)
-  {
-      if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
-          memcpy(localTempBuffer, tempBuffer, sizeof(localTempBuffer));
-          osMutexRelease(tempBufferMutexHandle);
-      }
+  for (;;) {
+#ifdef testLoopback
+    rxBurstCount = 0;
+    while (osMessageQueueGet(canRxQueueHandle, &rxMsg, NULL, 0) == osOK) {
+      lastRxMsg = rxMsg;
+      rxLastId = rxMsg.header.Identifier;
+//      rxCount++;
+//      rxBurstCount++;
+      HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);
+    }
+#endif
+
+    if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
+      memcpy(localTempBuffer, tempBuffer, sizeof(localTempBuffer));
+      osMutexRelease(tempBufferMutexHandle);
+    }
 
 #ifdef slave1
-	  sendTemperatureToMaster(localTempBuffer, idSlave1Burst0);
+    lastTxStatus = sendTemperatureToMaster(localTempBuffer, idSlave1Burst0);
 #endif
 #ifdef slave2
-	  sendTemperatureToMaster(localTempBuffer, idSlave2Burst0);
+    lastTxStatus = sendTemperatureToMaster(localTempBuffer, idSlave2Burst0);
 #endif
 #ifdef slave3
-	  sendTemperatureToMaster(localTempBuffer, idSlave3Burst0);
+    lastTxStatus = sendTemperatureToMaster(localTempBuffer, idSlave3Burst0);
 #endif
 #ifdef slave4
-	  sendTemperatureToMaster(localTempBuffer, idSlave4Burst0);
+    lastTxStatus = sendTemperatureToMaster(localTempBuffer, idSlave4Burst0);
 #endif
-	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_7);
+    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_7);
 
     osDelay(100);
   }

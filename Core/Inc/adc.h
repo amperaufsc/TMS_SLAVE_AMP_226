@@ -13,7 +13,7 @@
 
 #define numberOfThermistors 16
 #define adcResolution 4095
-#define vcc 2.9
+#define vcc 3.3
 #define shortCircuitThreshold 100
 #define openCircuitThreshhold (adcResolution-100)
 
