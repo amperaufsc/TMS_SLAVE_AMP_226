@@ -664,19 +664,19 @@ void xReadTempFunction(void *argument)
       readStatus = checkThermistorConnection(filteredAdcBuffer[i]);
 
       /* Etapa 4: Conversão e armazenamento (protegido por mutex) */
-//      if(readStatus == OK){
+      if(readStatus == OK){
     	  if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
     		  tempBuffer[i] = convertVoltageToTemperature(
     				  convertBitsToVoltage(filteredAdcBuffer[i]));
     		  osMutexRelease(tempBufferMutexHandle);
     	  }
-//      }
-//      else{
-//    	  thermistorFault = 1;
-//    	  sendReadingErrorInfoIntoCAN();
-//    	  osDelay(5); // Garante que o hardware CAN transmita o erro antes de prosseguir
-//    	  Error_Handler();
-//      }
+      }
+      else{
+    	  thermistorFault = 1;
+    	  sendReadingErrorInfoIntoCAN();
+    	  osDelay(5); // Garante que o hardware CAN transmita o erro antes de prosseguir
+    	  Error_Handler();
+      }
     }
 
     /* Aguarda 100ms antes da próxima leitura (taxa de aquisição: ~10 Hz) */
