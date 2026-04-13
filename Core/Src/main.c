@@ -68,32 +68,13 @@ const osThreadAttr_t xSendCAN_attributes = {
 };
 /* USER CODE BEGIN PV */
 
-/* ==================== Mutex para buffer de temperaturas ================== */
-/* Protege o array tempBuffer[] contra acesso simultâneo entre as threads
- * xReadTemp (escritora) e xSendCAN (leitora). Sem ele, a thread de envio
- * poderia ler dados parcialmente atualizados (race condition). */
+/* ==================== Mutex for Temperature Buffer ===================== */
+/**
+ * @brief Thread-safe protection for the tempBuffer[] array.
+ * synchronizes access between xReadTemp (producer) and xSendCAN (consumer).
+ */
 osMutexId_t tempBufferMutexHandle;
 const osMutexAttr_t tempBufferMutex_attributes = {.name = "tempBufferMutex"};
-
-/* ===================== Buffers de dados do ADC =========================== */
-uint16_t rawAdcBuffer[numberOfThermistors];       // Buffer DMA: recebe as 16 leituras brutas do ADC
-float tempBuffer[numberOfThermistors];             // Temperaturas convertidas (°C) — protegido por mutex
-float voltageBuffer[numberOfThermistors];           // Tensões convertidas (V) — auxiliar
-extern uint16_t filteredAdcBuffer[numberOfThermistors]; // Acumulador IIR (definido em adc.c)
-
-/* ===================== Variáveis CAN TX ================================== */
-extern uint8_t FDCAN1TxData[8];                    // Buffer de payload TX (definido em can.c)
-extern FDCAN_TxHeaderTypeDef FDCAN1TxHeader;        // Header TX (definido em can.c)
-
-/* ===================== Fila CAN RX (FreeRTOS Queue) ====================== */
-osMessageQueueId_t canRxQueueHandle;               // Handle da fila de recepção CAN
-
-/* ===================== Variáveis de debug (Live Expressions) ============= */
-CAN_RxMsg_t lastRxMsg;                              // Última mensagem CAN recebida (header + dados)
-CAN_TxStatus_t lastTxStatus = CAN_TX_OK;            // Status do último envio de temperaturas
-uint32_t rxCount = 0;                               // Total acumulado de msgs CAN recebidas
-uint32_t rxLastId = 0;                              // ID da última mensagem recebida
-uint8_t  rxBurstCount = 0;                          // Quantas msgs foram drenadas na última iteração
 
 /* ===================== Flags de status do sistema ======================== */
 int thermistorFault = 0;                            // 1 = pelo menos um termistor com falha
@@ -559,56 +540,39 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-/* ====================== CALLBACKS DE INTERRUPÇÃO ====================== */
-/* Estas funções são chamadas automaticamente pelo hardware (ISR).
- * REGRA DE OURO: Nunca fazer processamento pesado aqui dentro.
- * Apenas sinalizar a thread correspondente e sair o mais rápido possível. */
+/* ====================== INTERRUPT CALLBACKS (ISR) ====================== */
 
 /**
- * @brief  Callback do DMA do ADC — chamada quando todas as 16 leituras terminaram.
- *
- * O DMA transfere os 16 canais do ADC2 para rawAdcBuffer[] automaticamente.
- * Quando termina, esta ISR acorda a thread xReadTemp via Task Notification
- * para que ela processe os dados fora da interrupção.
- *
- * Tempo na ISR: ~1µs (apenas uma chamada de API do FreeRTOS)
+ * @brief  ADC DMA Completion Callback.
+ * Transfers raw 16-channel samples to rawAdcBuffer[] and signals xReadTemp.
+ * Minimal ISR footprint: 1 FreeRTOS notification.
  */
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
   vTaskNotifyGiveFromISR(xReadTempHandle, &xHigherPriorityTaskWoken);
-  portYIELD_FROM_ISR(xHigherPriorityTaskWoken); // Cede CPU se a thread acordada for mais prioritária
+  portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
 /**
- * @brief  Callback de recepção CAN — chamada quando uma mensagem chega na FIFO0.
- *
- * Usa o padrão "Deferred Interrupt Processing" do FreeRTOS:
- *   1. Lê a mensagem do hardware para uma struct LOCAL na stack (sem global)
- *   2. Empurra a struct inteira para a Message Queue do FreeRTOS
- *   3. A thread xSendCAN drena a fila quando acordar
- *
- * Isso garante que, mesmo se várias mensagens chegarem em rajada,
- * nenhuma é perdida (a Queue armazena até CAN_RX_QUEUE_SIZE mensagens).
- *
- * Tempo na ISR: ~2-5µs (apenas cópia de memória, sem sprintf/printf)
+ * @brief  FDCAN RX FIFO 0 Callback.
+ * Implements "Deferred Interrupt Processing":
+ * 1. Reads hardware message to local stack struct.
+ * 2. Pushes struct to the FreeRTOS message queue.
+ * 3. xSendCAN thread drains the queue during its period.
  */
 void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
                                uint32_t RxFifo0ITs) {
   if (hfdcan->Instance == FDCAN1) {
     if ((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET) {
-      CAN_RxMsg_t rxMsg; // Struct local na stack — cada ISR tem a sua cópia
+      CAN_RxMsg_t rxMsg;
       BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
-      /* Lê a mensagem do hardware para a struct local */
       if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &rxMsg.header,
                                  rxMsg.data) == HAL_OK) {
-        /* Empurra para a fila. Se cheia (16 msgs), descarta silenciosamente */
         xQueueSendFromISR((QueueHandle_t)canRxQueueHandle, &rxMsg,
                           &xHigherPriorityTaskWoken);
         portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
       }
-      /* Se GetRxMessage falhou (quadro corrompido/colisão), apenas ignora.
-       * O timeout de RX na thread cuidará de falhas prolongadas. */
     }
   }
 }
@@ -631,39 +595,37 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
 void xReadTempFunction(void *argument)
 {
   /* USER CODE BEGIN 5 */
+  /* Main thermal acquisition loop (~10Hz) */
   static bool filtersInitialized = false;
 
-  /* Loop infinito de aquisição */
   for (;;) {
-    /* Dispara a conversão DMA: o hardware ADC preenche rawAdcBuffer[] sozinho */
+    /* Trigger hardware scan via DMA */
     HAL_ADC_Start_DMA(&hadc2, (uint32_t *)rawAdcBuffer, numberOfThermistors);
 
-    /* Dorme aqui até o DMA completar (acordado pelo HAL_ADC_ConvCpltCallback) */
+    /* Wait for completion signal from HAL_ADC_ConvCpltCallback */
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-    /* Para o DMA após leitura completa */
     HAL_ADC_Stop_DMA(&hadc2);
 
-    /* Na primeira execução, inicializa os buffers dos filtros com valores reais
-     * para evitar transitório de aquecimento (filtro partindo de zero) */
+    /* Prime DSP filters on first runtime iteration */
     if (!filtersInitialized) {
       initTemperatureFilters(rawAdcBuffer);
       filtersInitialized = true;
     }
 
-    /* Processa cada um dos 16 canais de temperatura */
+    /* Process all 16 thermistor channels */
     for (int i = 0; i < numberOfThermistors; i++) {
 
-      /* Etapa 1: Filtro de mediana (janela 3) — elimina spikes */
+      /* Step 1: Median Filter (3-tap window) - spike elimination */
       uint16_t medianADC = applyMedianFilter(rawAdcBuffer[i], i);
 
-      /* Etapa 2: Filtro IIR (alpha=1/8) — suaviza o sinal */
+      /* Step 2: IIR Filter (alpha=1/8) - signal smoothing */
       filteredAdcBuffer[i] = applyIIRFilter(medianADC, i);
 
-      /* Etapa 3: Diagnóstico de integridade do sensor */
+      /* Step 3: Diagnostic verification (Short/Open protection) */
       readStatus = checkThermistorConnection(filteredAdcBuffer[i]);
 
-      /* Etapa 4: Conversão e armazenamento (protegido por mutex) */
+      /* Step 4: Physical unit conversion (thread-safe) */
       if(readStatus == OK){
     	  if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
     		  tempBuffer[i] = convertVoltageToTemperature(
@@ -672,14 +634,13 @@ void xReadTempFunction(void *argument)
     	  }
       }
       else{
+    	  /* Signal critical error and halt board to trigger SDC */
     	  thermistorFault = 1;
     	  sendReadingErrorInfoIntoCAN();
-    	  osDelay(5); // Garante que o hardware CAN transmita o erro antes de prosseguir
+    	  osDelay(5); 
     	  Error_Handler();
       }
     }
-
-    /* Aguarda 100ms antes da próxima leitura (taxa de aquisição: ~10 Hz) */
     osDelay(100);
   }
   /* USER CODE END 5 */
@@ -702,37 +663,29 @@ void xReadTempFunction(void *argument)
 void xSendCANFunction(void *argument)
 {
   /* USER CODE BEGIN xSendCANFunction */
-  float localTempBuffer[numberOfThermistors]; // Cópia local (sem mutex) para envio seguro
-  CAN_RxMsg_t rxMsg;                          // Buffer para drenar a fila de RX
+  /* Main reporting loop (~10Hz update rate) */
+  float localTempBuffer[numberOfThermistors]; 
+  CAN_RxMsg_t rxMsg;                          
 
-  /* Loop infinito de envio */
   for (;;) {
 
-    /* ====== Bloco de recepção CAN (modo de teste loopback) ====== */
-    /* Drena TODAS as mensagens pendentes na fila de recepção CAN.
-     * Timeout 0 = não bloqueia, apenas verifica se tem algo.
-     * Atualiza lastRxMsg e rxLastId para visualização no Live Expressions. */
+    /* ====== CAN Reception Handling (Loopback/Testing) ====== */
 #ifdef testLoopback
-    rxBurstCount = 0;
     while (osMessageQueueGet(canRxQueueHandle, &rxMsg, NULL, 0) == osOK) {
-      lastRxMsg = rxMsg;                       // Salva última msg para debug
-      rxLastId = rxMsg.header.Identifier;       // Salva último ID para debug
-//      rxCount++;                              // Contador total (comentado para economizar ciclos)
-//      rxBurstCount++;                         // Contador por iteração
-      HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);   // Pisca LED a cada msg recebida
+      lastRxMsg = rxMsg;                       
+      rxLastId = rxMsg.header.Identifier;      
+      HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);   
     }
 #endif
 
-    /* ====== Bloco de envio de temperaturas ====== */
-    /* Copia o buffer compartilhado para uma cópia local (acesso rápido ao mutex) */
+    /* ====== Temperature Reporting Block ====== */
+    /* Copy latest thermal data to local buffer using quick mutex lock */
     if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
       memcpy(localTempBuffer, tempBuffer, sizeof(localTempBuffer));
       osMutexRelease(tempBufferMutexHandle);
     }
 
-    /* Envia todas as temperaturas para a Master via CAN.
-     * O ID base é selecionado em tempo de compilação pelo define slaveN.
-     * lastTxStatus armazena o resultado para monitoramento no debugger. */
+    /* Transmit burst to Master based on board identity */
 #ifdef slave1
     lastTxStatus = sendTemperatureToMaster(localTempBuffer, idSlave1Burst0);
 #endif
@@ -746,10 +699,9 @@ void xSendCANFunction(void *argument)
     lastTxStatus = sendTemperatureToMaster(localTempBuffer, idSlave4Burst0);
 #endif
 
-    /* Heartbeat visual: pisca LED a cada ciclo (confirma que a thread está viva) */
+    /* Heartbeat LED: Toggles every 100ms to indicate OS health */
     HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_7);
 
-    /* Aguarda 100ms antes do próximo envio (taxa de atualização: ~10 Hz) */
     osDelay(100);
   }
   /* USER CODE END xSendCANFunction */

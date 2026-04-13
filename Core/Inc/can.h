@@ -1,15 +1,16 @@
-/*
- * can.h — Interface do módulo de comunicação CAN (FDCAN)
+/**
+ * @file can.h
+ * @brief Configuration and constants for CAN communication from Slave to Master.
  *
- *  Created on: Sep 4, 2025
- *      Author: Guilherme Lettmann
+ * This header centralizes all TMS network definitions from the slave's perspective:
+ * - Slave identity selection (which hardware board is this).
+ * - CAN ID mapping for temperature bursts and error frames.
+ * - Robustness parameters (retry count, failure thresholds).
+ * - Status types for transmission functions.
+ * - Message structure for the RX queue.
  *
- *  Este header centraliza todas as definições da rede CAN do TMS:
- *  - Seleção de identidade do slave (qual placa física é esta)
- *  - Mapa de IDs CAN para burst de temperaturas e erros
- *  - Parâmetros de robustez (retry, timeout de falha)
- *  - Tipos de retorno para funções de transmissão
- *  - Struct para enfileiramento de mensagens recebidas (FreeRTOS Queue)
+ * Created on: Sep 4, 2025
+ * Author: Guilherme Lettmann
  */
 
 #ifndef INC_CAN_H_
@@ -18,66 +19,83 @@
 #include "main.h"
 #include "adc.h"
 
-/* ======== Capacidade da fila de recepção CAN (FreeRTOS Queue) ======== */
-#define CAN_RX_QUEUE_SIZE 16   // Suporta até 16 mensagens enfileiradas simultaneamente
+/* ================== CAN RX Message Queue Capacity ================== */
+/** @brief Maximum number of messages queued simultaneously for processing */
+#define CAN_RX_QUEUE_SIZE 16
 
-/* ================ Seleção de identidade do Slave ===================== */
-/* IMPORTANTE: Descomente apenas UM define por placa física.
- * Cada placa Slave possui IDs CAN únicos para evitar colisões no barramento. */
+/* ================ Slave Identity Selection =========================== */
+/**
+ * IMPORTANT: Uncomment exactly ONE define per physical board.
+ * Each Slave board must have a unique ID to avoid bus collisions.
+ */
 #define slave1
 //#define slave2
 //#define slave3
 //#define slave4
 
-/* =================== Flag de modo de teste =========================== */
-/* Quando definido, habilita a drenagem da Message Queue de RX na thread
- * xSendCAN para validar a recepção em modo Internal Loopback do FDCAN.
- * Remover este define para operação normal no carro. */
+/* ================== Test & Debug Flags =============================== */
+/**
+ * @brief Enable to validate FDCAN internal loopback reception.
+ * Drain the RX message queue inside the xSendCAN thread during testing.
+ * Remove this define for production deployment in the vehicle.
+ */
 #define testLoopback
 
-/* ==================== Mapa de IDs CAN ================================ */
-/* ID de mensagem da Master (resumo geral do sistema TMS) */
+/* ================== CAN Identifier Map =============================== */
+/** @brief Identifier for messages sent by the Master (System Status) */
 #define idMaster 0x00A
 
-/* IDs base dos bursts de temperatura de cada Slave.
- * Cada Slave envia 8 quadros sequenciais (2 floats por quadro = 16 termistores).
- * Ex: Slave 1 usa IDs 0x010, 0x011, 0x012, ..., 0x017                  */
+/**
+ * @brief Base Identifiers for Temperature Bursts.
+ * Each slave sends 8 sequential frames (2 floats per frame = 16 thermistors).
+ * e.g., Slave 1 uses IDs 0x010, 0x011, 0x012, ..., 0x017.
+ */
 #define idSlave1Burst0 0x010
 #define idSlave2Burst0 0x020
 #define idSlave3Burst0 0x030
 #define idSlave4Burst0 0x040
 
-/* IDs de erro de leitura de termistor (curto-circuito ou circuito aberto) */
+/** @brief Identifiers for Thermistor Disconnection faults (Open/Short circuit) */
 #define idSlave1ThermistorError 0x050
 #define idSlave2ThermistorError 0x051
 #define idSlave3ThermistorError 0x052
 #define idSlave4ThermistorError 0x053
 
-/* ================ Parâmetros de robustez do envio CAN ================ */
-#define CAN_TX_RETRY_MAX      20   // Tentativas por quadro antes de desistir (≈20ms)
-#define CAN_TX_FAULT_THRESHOLD 10  // Falhas consecutivas antes de acionar Shutdown (SDC)
+/* ================== Transmission Robustness Parameters ================ */
+/** @brief Maximum retries per frame before dropping it (~20ms wait) */
+#define CAN_TX_RETRY_MAX      20
+/** @brief Consecutive failed frames before triggering SDC Shutdown */
+#define CAN_TX_FAULT_THRESHOLD 10
 
-/* ============= Status de retorno das funções de transmissão ========== */
+/* ================== Transmission Status Types ======================== */
 typedef enum {
-	CAN_TX_OK = 0,       // Todos os quadros enviados com sucesso
-	CAN_TX_FAIL,         // Falha pontual (quadro descartado, sistema continua operando)
-	CAN_TX_FATAL         // Falha crítica: rede CAN inoperante, Shutdown será acionado
+	CAN_TX_OK = 0,       /**< Frame(s) successfully accepted by hardware */
+	CAN_TX_FAIL,         /**< Single frame dropped (system remains active) */
+	CAN_TX_FATAL         /**< Safety threshold reached: SDC Shutdown triggered */
 } CAN_TxStatus_t;
 
-/* ====================== Protótipos de funções ======================== */
+/* ================== Function Prototypes ============================== */
+
+/**
+ * @brief Sends all 16 smoothed temperature values to the Master.
+ * @param buffer Array of 16 processed float temperatures.
+ * @param baseID Base CAN ID for the transmission burst.
+ * @return CAN_TxStatus_t Status of the transmission burst.
+ */
 CAN_TxStatus_t sendTemperatureToMaster(float buffer[], uint16_t baseID);
+
+/**
+ * @brief Broadcasts a critical thermistor reading error to the Master.
+ */
 void sendReadingErrorInfoIntoCAN(void);
 
-/* ============= Struct para fila de recepção CAN (Queue) ============== */
-/* Encapsula um quadro CAN completo (header + 8 bytes de dados).
- * Usada pela ISR (HAL_FDCAN_RxFifo0Callback) para empurrar mensagens
- * recebidas para a fila do FreeRTOS sem usar variáveis globais. */
+/* ================== CAN RX Message structure for Queuing ============= */
 typedef struct {
-	FDCAN_RxHeaderTypeDef header;   // Header com ID, DLC, timestamp, etc.
-	uint8_t data[8];                // Payload de dados (até 8 bytes no CAN clássico)
+	FDCAN_RxHeaderTypeDef header;   /**< HAL Header (ID, DLC, etc.) */
+	uint8_t data[8];                /**< 8-byte data payload */
 } CAN_RxMsg_t;
 
-/* Handle da fila de recepção (definida em main.c, acessível globalmente) */
+/** @brief Handle for the global RX Message Queue (defined in main.c) */
 extern osMessageQueueId_t canRxQueueHandle;
 
 #endif /* INC_CAN_H_ */

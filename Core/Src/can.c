@@ -1,159 +1,122 @@
-/*
- * can.c — Módulo de comunicação CAN (FDCAN) para transmissão de dados
+/**
+ * @file can.c
+ * @brief CAN (FDCAN) communication module for data transmission to Master.
  *
- *  Created on: Sep 4, 2025
- *      Author: Guilherme Lettmann
+ * This module manages all outgoing CAN traffic from the Slave:
+ * - Periodic transmission of 16 temperature values (8-frame burst).
+ * - Transmission of thermistor fault alarms.
+ * - Robust retry mechanism with safety-critical failure detection (SDC Shutdown).
  *
- *  Este módulo gerencia toda a transmissão CAN do Slave para a Master:
- *  - Envio periódico dos 16 valores de temperatura (8 quadros CAN)
- *  - Envio de alarmes de falha de termistor
- *  - Mecanismo de retry com detecção de falha crítica (Shutdown/SDC)
+ * Safety Architecture:
+ * - Each frame has up to CAN_TX_RETRY_MAX attempts (~20ms).
+ * - If a frame fails after retries, it is dropped to prevent blocking the RTOS.
+ * - If CAN_TX_FAULT_THRESHOLD consecutive frames fail, the system enters 
+ *   Error_Handler (triggering SDC Shutdown).
+ * - Any successful transmission resets the failure counter.
  *
- *  Arquitetura de segurança:
- *    - Cada quadro CAN tem até CAN_TX_RETRY_MAX tentativas de envio (≈20ms)
- *    - Se um quadro falha, o sistema descarta e segue para o próximo
- *    - Se CAN_TX_FAULT_THRESHOLD falhas CONSECUTIVAS ocorrem sem nenhum
- *      sucesso intermediário, o sistema entra em Error_Handler → Shutdown
- *    - Qualquer envio bem-sucedido zera o contador de falhas
+ * Created on: Sep 4, 2025
+ * Author: Guilherme Lettmann
  */
+
 #include "can.h"
 #include "string.h"
 #include "main.h"
 #include "adc.h"
 
-/* ==================== Variáveis globais de TX ======================== */
-extern FDCAN_HandleTypeDef hfdcan1;  // Handle do periférico FDCAN1 (gerado pelo CubeMX)
-uint8_t FDCAN1TxData[8];             // Buffer de payload para transmissão (8 bytes = CAN clássico)
-FDCAN_TxHeaderTypeDef FDCAN1TxHeader; // Header de transmissão (ID, DLC, formato, etc.)
+/* ================== External Globals from main.c ===================== */
+extern FDCAN_HandleTypeDef hfdcan1;
+/** @brief Buffer for outcoming 8-byte payload */
+uint8_t FDCAN1TxData[8];
+/** @brief Header for transmission (ID, DLC, etc.) */
+FDCAN_TxHeaderTypeDef FDCAN1TxHeader;
 
-/* Contador persistente de falhas consecutivas de transmissão.
- * Static no escopo do arquivo: visível apenas dentro de can.c,
- * compartilhado entre sendTemperatureToMaster e sendReadingErrorInfoIntoCAN.
- * Qualquer envio bem-sucedido zera este contador automaticamente. */
+/** @brief Persistent counter for consecutive TX failures across all channels */
 static uint8_t canConsecutiveFailures = 0;
 
-/* ==================== Funções internas (static) ====================== */
+/* ==================== Internal Static Functions ====================== */
 
 /**
- * @brief  Envia um único quadro CAN com mecanismo de retry e detecção de falha.
+ * @brief  Sends a single CAN frame with retry logic and safety monitoring.
  *
- * Esta é a função-base usada por todas as rotinas de transmissão.
- * Centraliza a lógica de retry e o contador de falhas num único local.
+ * This is the core transmission function for all slave routines.
+ * 
+ * Flow:
+ * 1. Checks if peripheral is operational.
+ * 2. Attempts to add message to hardware FIFO.
+ * 3. On full FIFO, waits 1ms and retries (up to CAN_TX_RETRY_MAX).
+ * 4. Tracks 'canConsecutiveFailures' for network health monitoring.
  *
- * Fluxo:
- *   1. Verifica se o periférico FDCAN está operacional (HAL_FDCAN_STATE_BUSY)
- *   2. Configura o ID e DLC no header global
- *   3. Tenta inserir a mensagem na fila de TX do hardware (FIFO)
- *   4. Se a fila estiver cheia, espera 1ms e tenta novamente (até CAN_TX_RETRY_MAX vezes)
- *   5. Se todas as tentativas falharem, incrementa o contador de falhas
- *   6. Se o contador atingir CAN_TX_FAULT_THRESHOLD, retorna CAN_TX_FATAL
- *
- * @param  identifier: ID CAN do quadro (11 bits, Standard ID)
- * @param  data:       Ponteiro para os 8 bytes de payload a enviar
- * @retval CAN_TX_OK     → Quadro aceito pelo hardware com sucesso
- *         CAN_TX_FAIL   → Esgotou tentativas para este quadro (descartado)
- *         CAN_TX_FATAL  → Limiar de falhas consecutivas atingido (rede inoperante)
+ * @param  identifier: Standard CAN ID (11 bits).
+ * @param  data: Pointer to 8-byte payload.
+ * @return CAN_TX_OK, CAN_TX_FAIL (one frame lost), or CAN_TX_FATAL (Shutdown).
  */
 static CAN_TxStatus_t sendSingleFrame(uint16_t identifier, uint8_t *data)
 {
-	/* Passo 1: Verificar se o periférico FDCAN está em estado operacional.
-	 * Após HAL_FDCAN_Start(), o estado deve ser HAL_FDCAN_STATE_BUSY.
-	 * Se estiver em outro estado (erro de init, bus-off), não tenta enviar. */
+	/* Peripheral health check */
 	if (hfdcan1.State != HAL_FDCAN_STATE_BUSY)
 	{
 		canConsecutiveFailures++;
-		if (canConsecutiveFailures >= CAN_TX_FAULT_THRESHOLD)
-		{
+		if (canConsecutiveFailures >= CAN_TX_FAULT_THRESHOLD) {
 			return CAN_TX_FATAL;
 		}
 		return CAN_TX_FAIL;
 	}
 
-	/* Passo 2: Configura o header do quadro CAN.
-	 * Os campos FDFormat, IdType e BitRateSwitch já foram configurados
-	 * uma vez durante MX_FDCAN1_Init() e persistem no header global. */
+	/* Setup Header */
 	FDCAN1TxHeader.Identifier = identifier;
 	FDCAN1TxHeader.DataLength = FDCAN_DLC_BYTES_8;
 
-	/* Passo 3: Tenta inserir o quadro na fila de TX do hardware.
-	 * HAL_FDCAN_AddMessageToTxFifoQ retorna HAL_OK se a mensagem
-	 * foi aceita pelo módulo FDCAN. Retorna HAL_ERROR se a fila
-	 * de TX está cheia (todas as 3 mailboxes ocupadas). */
 	uint8_t retry = 0;
+	/* Attempt to queue message in hardware FIFO */
 	while (HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader, data) != HAL_OK)
 	{
-		osDelay(1);  // Cede 1ms ao kernel FreeRTOS para processar outras tasks
+		osDelay(1); // Yield 1ms to other RTOS tasks while waiting for FIFO space
 		if (++retry >= CAN_TX_RETRY_MAX)
 		{
-			/* Esgotou as tentativas: a fila de TX não liberou espaço */
+			/* Network likely congested or disconnected */
 			canConsecutiveFailures++;
-			if (canConsecutiveFailures >= CAN_TX_FAULT_THRESHOLD)
-			{
-				return CAN_TX_FATAL;  // Rede completamente inoperante
+			if (canConsecutiveFailures >= CAN_TX_FAULT_THRESHOLD) {
+				return CAN_TX_FATAL;
 			}
-			return CAN_TX_FAIL;  // Descarta este quadro, mas sistema continua
+			return CAN_TX_FAIL;
 		}
 	}
 
-	/* Passo 4: Envio bem-sucedido — zera contador de falhas.
-	 * Isso garante que glitches isolados (ruído EMI, colisão momentânea)
-	 * não acumulem até atingir o limiar de Shutdown. */
+	/* Transmission successful: reset safety counter */
 	canConsecutiveFailures = 0;
 	return CAN_TX_OK;
 }
 
-/* ==================== Funções públicas ================================ */
+/* ==================== Public Functions =============================== */
 
-/**
- * @brief  Envia as 16 temperaturas para a Master em quadros CAN sequenciais.
- *
- * Cada quadro carrega 2 floats (8 bytes), totalizando 8 quadros por burst.
- * Os IDs são sequenciais: baseID+0, baseID+1, ..., baseID+7.
- *
- * Exemplo para Slave 1 (baseID = 0x010):
- *   Frame 0 → ID 0x010 → [temp[0], temp[1]]
- *   Frame 1 → ID 0x011 → [temp[2], temp[3]]
- *   ...
- *   Frame 7 → ID 0x017 → [temp[14], temp[15]]
- *
- * Usa memcpy para copiar os floats para o buffer de TX, evitando violação
- * de strict aliasing (cast float* sobre uint8_t* é undefined behavior no C
- * e pode gerar código incorreto em otimizações -O2/-O3 do GCC).
- *
- * @param  buffer: Array de floats com as temperaturas convertidas (16 valores)
- * @param  baseID: ID base do burst (definido em can.h, ex: idSlave1Burst0)
- * @retval CAN_TX_OK    → Todos os 8 quadros foram enviados com sucesso
- *         CAN_TX_FAIL  → Pelo menos um quadro foi descartado
- *         CAN_TX_FATAL → Limiar de falhas atingido (Error_Handler é chamado internamente)
- */
 CAN_TxStatus_t sendTemperatureToMaster(float buffer[], uint16_t baseID)
 {
-	/* Calcula o número de quadros: 16 termistores / 2 por quadro = 8 quadros */
+	/* 16 thermistors / 2 values per frame = 8 frames total */
 	uint8_t frames = (numberOfThermistors + 1) / 2;
-	CAN_TxStatus_t worstResult = CAN_TX_OK;  // Rastreia o pior resultado do burst
+	CAN_TxStatus_t worstResult = CAN_TX_OK;
 
 	for (uint8_t frame = 0; frame < frames; frame++)
 	{
-		uint8_t i = frame * 2;  // Índice do primeiro termistor deste quadro
+		uint8_t i = frame * 2;
 
-		/* Monta o payload com memcpy (seguro contra strict aliasing) */
+		/* Pack 2 floats into the 8-byte payload.
+		 * Use memcpy to follow strict aliasing rules for safety. */
 		float temp1 = buffer[i];
 		float temp2 = (i + 1 < numberOfThermistors) ? buffer[i + 1] : buffer[i];
-		memcpy(&FDCAN1TxData[0], &temp1, sizeof(float));  // Bytes 0-3: temperatura 1
-		memcpy(&FDCAN1TxData[4], &temp2, sizeof(float));  // Bytes 4-7: temperatura 2
+		memcpy(&FDCAN1TxData[0], &temp1, sizeof(float)); // Bytes 0-3
+		memcpy(&FDCAN1TxData[4], &temp2, sizeof(float)); // Bytes 4-7
 
-		/* Envia o quadro usando a função comum de retry */
+		/* IDs are sequential within the burst: baseID, baseID+1, etc. */
 		CAN_TxStatus_t result = sendSingleFrame(baseID + frame, FDCAN1TxData);
 
 		if (result == CAN_TX_FATAL)
 		{
-			Error_Handler();  // Aciona Shutdown (GPIO PC8) e trava o processador
-			return CAN_TX_FATAL;  // Nunca chega aqui, mas satisfaz o compilador
+			Error_Handler(); // Trigger SDC Shutdown and halt core
+			return CAN_TX_FATAL;
 		}
 
-		/* Registra se pelo menos um quadro falhou neste burst */
-		if (result == CAN_TX_FAIL && worstResult == CAN_TX_OK)
-		{
+		/* Record if any single frame was dropped during the burst */
+		if (result == CAN_TX_FAIL && worstResult == CAN_TX_OK) {
 			worstResult = CAN_TX_FAIL;
 		}
 	}
@@ -161,21 +124,9 @@ CAN_TxStatus_t sendTemperatureToMaster(float buffer[], uint16_t baseID)
 	return worstResult;
 }
 
-/**
- * @brief  Envia um quadro CAN de erro de termistor para a Master.
- *
- * Chamada quando checkThermistorConnection() detecta um circuito aberto
- * ou curto-circuito em algum dos 16 sensores NTC.
- *
- * O ID do quadro é selecionado em tempo de compilação pelo define slaveN
- * (configurado em can.h). Usa a mesma lógica de retry e contagem de falhas
- * da sendSingleFrame, mantendo o mecanismo de Shutdown unificado.
- *
- * Payload: Byte 0 = 67 (código de erro de termistor), Bytes 1-7 = 0x00
- */
 void sendReadingErrorInfoIntoCAN(void)
 {
-	/* Seleciona o ID de erro correspondente ao slave ativo */
+	/* Select pre-configured error ID based on slave board identity */
 #if defined(slave1)
 	uint16_t errorId = idSlave1ThermistorError;
 #elif defined(slave2)
@@ -185,17 +136,15 @@ void sendReadingErrorInfoIntoCAN(void)
 #elif defined(slave4)
 	uint16_t errorId = idSlave4ThermistorError;
 #else
-	#error "Nenhum slave definido! Defina slave1, slave2, slave3 ou slave4 em can.h"
+	#error "No slave defined! Define slave1, slave2, slave3 or slave4 in can.h"
 #endif
 
-	/* Monta payload: zera tudo e seta o código de erro no byte 0 */
+	/* Pack error code 67 into byte 0 */
 	memset(FDCAN1TxData, 0, sizeof(FDCAN1TxData));
 	FDCAN1TxData[0] = 67;
 
-	/* Envia usando o mesmo mecanismo de retry */
 	CAN_TxStatus_t result = sendSingleFrame(errorId, FDCAN1TxData);
-	if (result == CAN_TX_FATAL)
-	{
-		Error_Handler();  // Rede CAN totalmente inoperante → Shutdown
+	if (result == CAN_TX_FATAL) {
+		Error_Handler(); // Fatal network error triggers SDC Shutdown
 	}
 }
