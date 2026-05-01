@@ -6,7 +6,7 @@ O **TMS_SLAVE_AMP_226** é o firmware embarcado de uma placa escrava do sistema 
 
 1. **Ler** 16 termistores conectados ao acumulador (bateria de alta tensão) via ADC + DMA.
 2. **Filtrar** as leituras brutas com filtros de mediana e IIR para eliminar ruído.
-3. **Converter** os valores filtrados em temperatura (°C) via polinômio de 4ª ordem.
+3. **Converter** os valores filtrados em temperatura (°C) via polinômio de 4ª ordem **ou** equação de Steinhart-Hart (Beta).
 4. **Transmitir** as temperaturas para a placa Master via barramento **FDCAN** (CAN 2.0 clássico).
 5. **Receber** mensagens CAN da Master (ou de loopback interno para testes) via **FreeRTOS Message Queue**.
 6. **Detectar falhas** de comunicação CAN (timeout com contagem de falhas consecutivas) e **acionar o Shutdown Circuit** caso a rede fique inoperante.
@@ -50,11 +50,13 @@ O **TMS_SLAVE_AMP_226** é o firmware embarcado de uma placa escrava do sistema 
 
 | Arquivo | Descrição |
 |---------|-----------|
-| `Core/Inc/adc.h` | Constantes do ADC, coeficientes do polinômio T(V), protótipos dos filtros |
+| `Core/Inc/adc.h` | Constantes do ADC, seleção de método de conversão, coeficientes/parâmetros NTC |
 | `Core/Src/adc.c` | Implementação dos filtros (mediana, IIR), conversão bits→tensão→temperatura |
 | `Core/Inc/can.h` | IDs CAN, defines de seleção de slave, struct `CAN_RxMsg_t`, protótipos |
 | `Core/Src/can.c` | Funções de transmissão CAN: envio de temperaturas e erros de leitura |
 | `Core/Src/main.c` | Inicialização do hardware, callbacks de interrupção, threads FreeRTOS |
+| `scripts/ntc_mf52_polyfit.py` | Script Python de calibração do polinômio T(V) a partir do datasheet |
+| `scripts/mf52_polyfit_result.png` | Gráfico do ajuste polinomial e erro residual |
 
 ---
 
@@ -83,11 +85,28 @@ V = (rawAdcVal × 3.3) / 4095
 ```
 
 #### `float convertVoltageToTemperature(float voltage)`
-Converte tensão em temperatura (°C) usando um polinômio de 4ª ordem calibrado para o modelo de termistor NTC utilizado:
+Converte tensão em temperatura (°C). O método é selecionado por `#define` em `adc.h`:
+
+**Método 1 — Fitting Curve** (`#define USE_FITTING_CURVE`):
+Polinômio de 4ª ordem calibrado empiricamente a partir do datasheet do MF52 NTC 10K B3950.
 ```
 T(V) = C0 + C1·V + C2·V² + C3·V³ + C4·V⁴
 ```
-Coeficientes: `C0=134.25`, `C1=-156.45`, `C2=105.64`, `C3=-40.82`, `C4=6.03`
+Coeficientes: `C0=128.920577`, `C1=-161.078689`, `C2=104.735668`, `C3=-33.005072`, `C4=3.477407`
+
+O script de calibração está em `scripts/ntc_mf52_polyfit.py` e o resultado em `scripts/mf52_polyfit_result.png`.
+Erro máximo: ~4.19°C (nas extremidades), RMS: ~1.68°C.
+
+**Método 2 — Steinhart-Hart / Beta** (`#define USE_STEINHART_HART`):
+Equação baseada nos parâmetros do datasheet do NTC, sem necessidade de calibração empírica.
+```
+R_ntc = R_pullup × V / (Vcc − V)
+1/T = 1/T₀ + (1/β) × ln(R/R₀)
+T_celsius = T_kelvin − 273.15
+```
+Parâmetros: `β=3950`, `R₀=10kΩ`, `T₀=298.15K (25°C)`, `R_pullup=10kΩ`
+
+Precisão: ~±1°C na faixa de 0–80°C. Vantagem: não requer recalibração se trocar o modelo de NTC (basta ajustar β e R₀).
 
 #### `thermStatus checkThermistorConnection(uint16_t rawAdcVal)`
 Diagnóstico de integridade do sensor. Retorna:
@@ -253,12 +272,14 @@ Ação de último recurso (falha crítica):
 
 ## Flags de Compilação Condicional
 
-| Define | Efeito |
-|--------|--------|
-| `slave1` / `slave2` / `slave3` / `slave4` | Seleciona a identidade (IDs CAN) da placa física |
-| `testLoopback` | Habilita a drenagem da Message Queue de RX para debug em Internal Loopback |
+| Define | Arquivo | Efeito |
+|--------|---------|--------|
+| `slave1` / `slave2` / `slave3` / `slave4` | `can.h` | Seleciona a identidade (IDs CAN) da placa física |
+| `testLoopback` | `can.h` | Habilita a drenagem da Message Queue de RX para debug em Internal Loopback |
+| `USE_FITTING_CURVE` | `adc.h` | Usa polinômio calibrado T(V) de 4ª ordem para conversão de temperatura |
+| `USE_STEINHART_HART` | `adc.h` | Usa equação Beta do NTC (datasheet) para conversão de temperatura |
 
 ---
 
 *Autor: Guilherme Lettmann — Fórmula SAE / AMP-226*
-*Última atualização: Abril 2026*
+*Última atualização: Maio 2026*

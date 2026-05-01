@@ -1,3 +1,3 @@
-../Core/Src/can.c:26:23:sendSingleFrame	24	static
-../Core/Src/can.c:72:16:sendTemperatureToMaster	32	static
-../Core/Src/can.c:110:6:sendReadingErrorInfoIntoCAN	16	static
+../Core/Src/can.c:53:23:sendSingleFrame	24	static
+../Core/Src/can.c:92:16:sendTemperatureToMaster	32	static
+../Core/Src/can.c:127:6:sendReadingErrorInfoIntoCAN	16	static
