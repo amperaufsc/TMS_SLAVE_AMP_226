@@ -2,6 +2,6 @@
 ../Core/Src/adc.c:52:10:applyMedianFilter	2
 ../Core/Src/adc.c:71:10:applyIIRFilter	1
 ../Core/Src/adc.c:78:7:convertBitsToVoltage	1
-../Core/Src/adc.c:82:7:convertVoltageToTemperature	1
+../Core/Src/adc.c:82:7:convertVoltageToTemperature	3
 ../Core/Src/adc.c:102:13:checkThermistorConnection	3
 ../Core/Src/adc.c:113:6:initTemperatureFilters	3

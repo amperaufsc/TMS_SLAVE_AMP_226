@@ -646,20 +646,20 @@ void xReadTempFunction(void *argument)
       readStatus = checkThermistorConnection(filteredAdcBuffer[i]);
 
       /* Step 4: Physical unit conversion (thread-safe) */
-      if(readStatus == OK){
+//      if(readStatus == OK){
     	  if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
     		  tempBuffer[i] = convertVoltageToTemperature(
     				  convertBitsToVoltage(filteredAdcBuffer[i]));
     		  osMutexRelease(tempBufferMutexHandle);
     	  }
-      }
-      else{
-    	  /* Signal critical error and halt board to trigger SDC */
-    	  thermistorFault = 1;
-    	  sendReadingErrorInfoIntoCAN();
-    	  osDelay(5); 
-    	  Error_Handler();
-      }
+//      }
+//      else{
+//    	  /* Signal critical error and halt board to trigger SDC */
+//    	  thermistorFault = 1;
+//    	  sendReadingErrorInfoIntoCAN();
+//    	  osDelay(5);
+//    	  Error_Handler();
+//      }
     }
     osDelay(100);
   }
@@ -707,7 +707,7 @@ void xSendCANFunction(void *argument)
 
     /* Transmit burst to Master based on board identity */
 #ifdef slave1
-    lastTxStatus = sendTemperatureToMaster(localTempBuffer, idSlave1Burst0);
+//    lastTxStatus = sendTemperatureToMaster(localTempBuffer, idSlave1Burst0);
 #endif
 #ifdef slave2
     lastTxStatus = sendTemperatureToMaster(localTempBuffer, idSlave2Burst0);

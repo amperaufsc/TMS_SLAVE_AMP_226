@@ -31,8 +31,8 @@
 /* Descomente EXATAMENTE UM dos defines abaixo:
  *   USE_FITTING_CURVE   → Polinômio T(V) de 4ª ordem (calibrado empiricamente)
  *   USE_STEINHART_HART  → Equação Beta do NTC (baseada no datasheet)           */
-#define USE_FITTING_CURVE
-//#define USE_STEINHART_HART
+//#define USE_FITTING_CURVE
+#define USE_STEINHART_HART
 
 #ifdef USE_FITTING_CURVE
 /* ============ Coeficientes do polinômio T(V) de 4ª ordem ============= */

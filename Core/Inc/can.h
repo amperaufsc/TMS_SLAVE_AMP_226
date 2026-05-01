@@ -39,7 +39,7 @@
  * Drain the RX message queue inside the xSendCAN thread during testing.
  * Remove this define for production deployment in the vehicle.
  */
-#define testLoopback
+//#define testLoopback
 
 /* ================== CAN Identifier Map =============================== */
 /** @brief Identifier for messages sent by the Master (System Status) */
