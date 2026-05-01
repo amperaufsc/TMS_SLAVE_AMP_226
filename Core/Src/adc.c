@@ -80,8 +80,23 @@ float convertBitsToVoltage(uint16_t rawAdcVal){
 }
 
 float convertVoltageToTemperature(float voltage){
-	/* Apply calibrated 4th order polynomial for thermal conversion */
-	return C0 + C1 * voltage + C2 * pow(voltage, 2) + C3 * pow(voltage, 3) + C4 *pow(voltage, 4);
+#ifdef USE_FITTING_CURVE
+	/* Polinômio calibrado T(V) de 4ª ordem */
+	return C0 + C1 * voltage + C2 * pow(voltage, 2) + C3 * pow(voltage, 3) + C4 * pow(voltage, 4);
+#endif
+
+#ifdef USE_STEINHART_HART
+	/* Equação Beta: ADC voltage → Resistência → Temperatura */
+	if (voltage <= 0.0f || voltage >= vcc) return -999.0f;
+
+	/* R_ntc = R_pullup × V / (Vcc − V)  [divisor de tensão com NTC pull-down] */
+	float R_ntc = R_PULLUP * voltage / (vcc - voltage);
+
+	/* 1/T = 1/T0 + (1/β) × ln(R/R0) */
+	float tempK = 1.0f / ( (1.0f / NTC_T0) + (1.0f / NTC_BETA) * logf(R_ntc / NTC_R0) );
+
+	return tempK - 273.15f;  /* Kelvin → Celsius */
+#endif
 }
 
 thermStatus checkThermistorConnection(uint16_t rawAdcVal){

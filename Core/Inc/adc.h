@@ -27,6 +27,14 @@
 #define shortCircuitThreshold 100          // ADC < 100 = curto-circuito no termistor
 #define openCircuitThreshhold (adcResolution-100)  // ADC > 3995 = circuito aberto (cabo rompido)
 
+/* ============ Método de conversão de temperatura ===================== */
+/* Descomente EXATAMENTE UM dos defines abaixo:
+ *   USE_FITTING_CURVE   → Polinômio T(V) de 4ª ordem (calibrado empiricamente)
+ *   USE_STEINHART_HART  → Equação Beta do NTC (baseada no datasheet)           */
+#define USE_FITTING_CURVE
+//#define USE_STEINHART_HART
+
+#ifdef USE_FITTING_CURVE
 /* ============ Coeficientes do polinômio T(V) de 4ª ordem ============= */
 /* Calibrados empiricamente para o modelo MF52 NTC 10K B3950.
  * T(V) = C0 + C1·V + C2·V² + C3·V³ + C4·V⁴                           */
@@ -35,6 +43,22 @@
 #define C2 (104.735668)
 #define C1 (-161.078689)
 #define C0 (128.920577)
+#endif
+
+#ifdef USE_STEINHART_HART
+/* ============ Parâmetros do NTC (equação Beta) ======================== */
+/* Circuito: Vcc ── R_PULLUP ──┬── NTC ── GND
+ *                             ADC_pin
+ * 1/T = 1/T0 + (1/β) × ln(R/R0)                                       */
+#define NTC_BETA       3950.0f       // B-value do MF52 NTC 10K B3950 (K)
+#define NTC_R0         10000.0f      // Resistência a 25°C (Ohms)
+#define NTC_T0         298.15f       // 25°C em Kelvin
+#define R_PULLUP       10000.0f      // Resistor de pull-up do divisor (Ohms)
+#endif
+
+#if !defined(USE_FITTING_CURVE) && !defined(USE_STEINHART_HART)
+#error "Defina USE_FITTING_CURVE ou USE_STEINHART_HART em adc.h"
+#endif
 
 /* ================== Status de integridade do sensor ================== */
 typedef enum {
