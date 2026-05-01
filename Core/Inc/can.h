@@ -1,8 +1,10 @@
 /**
  * @file can.h
- * @brief Configuration and constants for CAN communication from Slave to Master.
+ * @brief Configuration and constants for CAN communication from Slave to
+ * Master.
  *
- * This header centralizes all TMS network definitions from the slave's perspective:
+ * This header centralizes all TMS network definitions from the slave's
+ * perspective:
  * - Slave identity selection (which hardware board is this).
  * - CAN ID mapping for temperature bursts and error frames.
  * - Robustness parameters (retry count, failure thresholds).
@@ -16,8 +18,8 @@
 #ifndef INC_CAN_H_
 #define INC_CAN_H_
 
-#include "main.h"
 #include "adc.h"
+#include "main.h"
 
 /* ================== CAN RX Message Queue Capacity ================== */
 /** @brief Maximum number of messages queued simultaneously for processing */
@@ -29,9 +31,9 @@
  * Each Slave board must have a unique ID to avoid bus collisions.
  */
 #define slave1
-//#define slave2
-//#define slave3
-//#define slave4
+// #define slave2
+// #define slave3
+// #define slave4
 
 /* ================== Test & Debug Flags =============================== */
 /**
@@ -39,7 +41,7 @@
  * Drain the RX message queue inside the xSendCAN thread during testing.
  * Remove this define for production deployment in the vehicle.
  */
-#define testLoopback
+// #define testLoopback
 
 /* ================== CAN Identifier Map =============================== */
 /** @brief Identifier for messages sent by the Master (System Status) */
@@ -55,7 +57,8 @@
 #define idSlave3Burst0 0x030
 #define idSlave4Burst0 0x040
 
-/** @brief Identifiers for Thermistor Disconnection faults (Open/Short circuit) */
+/** @brief Identifiers for Thermistor Disconnection faults (Open/Short circuit)
+ */
 #define idSlave1ThermistorError 0x050
 #define idSlave2ThermistorError 0x051
 #define idSlave3ThermistorError 0x052
@@ -63,15 +66,15 @@
 
 /* ================== Transmission Robustness Parameters ================ */
 /** @brief Maximum retries per frame before dropping it (~20ms wait) */
-#define CAN_TX_RETRY_MAX      20
+#define CAN_TX_RETRY_MAX 20
 /** @brief Consecutive failed frames before triggering SDC Shutdown */
 #define CAN_TX_FAULT_THRESHOLD 10
 
 /* ================== Transmission Status Types ======================== */
 typedef enum {
-	CAN_TX_OK = 0,       /**< Frame(s) successfully accepted by hardware */
-	CAN_TX_FAIL,         /**< Single frame dropped (system remains active) */
-	CAN_TX_FATAL         /**< Safety threshold reached: SDC Shutdown triggered */
+  CAN_TX_OK = 0, /**< Frame(s) successfully accepted by hardware */
+  CAN_TX_FAIL,   /**< Single frame dropped (system remains active) */
+  CAN_TX_FATAL   /**< Safety threshold reached: SDC Shutdown triggered */
 } CAN_TxStatus_t;
 
 /* ================== Function Prototypes ============================== */
@@ -91,8 +94,8 @@ void sendReadingErrorInfoIntoCAN(void);
 
 /* ================== CAN RX Message structure for Queuing ============= */
 typedef struct {
-	FDCAN_RxHeaderTypeDef header;   /**< HAL Header (ID, DLC, etc.) */
-	uint8_t data[8];                /**< 8-byte data payload */
+  FDCAN_RxHeaderTypeDef header; /**< HAL Header (ID, DLC, etc.) */
+  uint8_t data[8];              /**< 8-byte data payload */
 } CAN_RxMsg_t;
 
 /** @brief Handle for the global RX Message Queue (defined in main.c) */

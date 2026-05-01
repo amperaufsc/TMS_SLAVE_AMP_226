@@ -67,18 +67,26 @@ const osThreadAttr_t xSendCAN_attributes = {
   .stack_size = 128 * 4
 };
 /* USER CODE BEGIN PV */
-
-/* ==================== Mutex for Temperature Buffer ===================== */
-/**
- * @brief Thread-safe protection for the tempBuffer[] array.
- * synchronizes access between xReadTemp (producer) and xSendCAN (consumer).
- */
 osMutexId_t tempBufferMutexHandle;
 const osMutexAttr_t tempBufferMutex_attributes = {.name = "tempBufferMutex"};
 
-/* ===================== Flags de status do sistema ======================== */
-int thermistorFault = 0;                            // 1 = pelo menos um termistor com falha
-thermStatus readStatus = 0;                         // Status da última verificação de conexão
+uint16_t rawAdcBuffer[numberOfThermistors];
+float tempBuffer[numberOfThermistors], voltageBuffer[numberOfThermistors];
+extern uint16_t filteredAdcBuffer[numberOfThermistors];
+
+extern uint8_t FDCAN1TxData[8];
+extern FDCAN_TxHeaderTypeDef FDCAN1TxHeader;
+
+osMessageQueueId_t canRxQueueHandle;
+
+CAN_RxMsg_t lastRxMsg;
+
+int thermistorFault = 0;
+thermStatus readStatus = 0;
+CAN_TxStatus_t lastTxStatus = CAN_TX_OK;
+uint32_t rxCount = 0;       // Total de mensagens CAN recebidas (Live Expressions)
+uint32_t rxLastId = 0;      // Último ID CAN recebido (Live Expressions)
+uint8_t  rxBurstCount = 0;  // Quantas msgs foram drenadas na última iteração
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -134,6 +142,7 @@ int main(void)
   MX_FDCAN1_Init();
   MX_ADC2_Init();
   /* USER CODE BEGIN 2 */
+  HAL_ADCEx_Calibration_Start(&hadc2, ADC_SINGLE_ENDED);
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -539,40 +548,27 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
-/* ====================== INTERRUPT CALLBACKS (ISR) ====================== */
-
-/**
- * @brief  ADC DMA Completion Callback.
- * Transfers raw 16-channel samples to rawAdcBuffer[] and signals xReadTemp.
- * Minimal ISR footprint: 1 FreeRTOS notification.
- */
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
   vTaskNotifyGiveFromISR(xReadTempHandle, &xHigherPriorityTaskWoken);
   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
-/**
- * @brief  FDCAN RX FIFO 0 Callback.
- * Implements "Deferred Interrupt Processing":
- * 1. Reads hardware message to local stack struct.
- * 2. Pushes struct to the FreeRTOS message queue.
- * 3. xSendCAN thread drains the queue during its period.
- */
 void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
                                uint32_t RxFifo0ITs) {
   if (hfdcan->Instance == FDCAN1) {
     if ((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET) {
-      CAN_RxMsg_t rxMsg;
+      CAN_RxMsg_t rxMsg; // Variável LOCAL na stack (sem global compartilhada)
       BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
+      /* Lê a mensagem do hardware para a struct local */
       if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &rxMsg.header,
                                  rxMsg.data) == HAL_OK) {
         xQueueSendFromISR((QueueHandle_t)canRxQueueHandle, &rxMsg,
                           &xHigherPriorityTaskWoken);
         portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
       }
+      // Se GetRxMessage falhou, ignora (quadro corrompido/colisão)
     }
   }
 }
@@ -580,66 +576,46 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
 
 /* USER CODE BEGIN Header_xReadTempFunction */
 /**
- * @brief  Thread de leitura de temperatura (Prioridade: Normal)
- *
- * Responsável pela aquisição e processamento dos 16 canais de temperatura.
- * Fluxo a cada iteração (~100ms):
- *   1. Inicia conversão DMA do ADC2 (16 canais simultaneamente)
- *   2. Dorme até o DMA completar (Task Notification do callback)
- *   3. Aplica filtro de mediana (remove spikes de ruído EMI)
- *   4. Aplica filtro IIR (suaviza oscilações residuais)
- *   5. Verifica integridade do sensor (curto/aberto)
- *   6. Converte ADC → Volts → °C e grava no buffer compartilhado (mutex)
+ * @brief  Function implementing the xReadTemp thread.
+ * @param  argument: Not used
+ * @retval None
  */
 /* USER CODE END Header_xReadTempFunction */
 void xReadTempFunction(void *argument)
 {
   /* USER CODE BEGIN 5 */
-  /* Main thermal acquisition loop (~10Hz) */
   static bool filtersInitialized = false;
-
+  // xReadTempHandle = xTaskGetCurrentTaskHandle();
+  /* Infinite loop */
   for (;;) {
-    /* Trigger hardware scan via DMA */
     HAL_ADC_Start_DMA(&hadc2, (uint32_t *)rawAdcBuffer, numberOfThermistors);
-
-    /* Wait for completion signal from HAL_ADC_ConvCpltCallback */
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-
     HAL_ADC_Stop_DMA(&hadc2);
 
-    /* Prime DSP filters on first runtime iteration */
     if (!filtersInitialized) {
       initTemperatureFilters(rawAdcBuffer);
       filtersInitialized = true;
     }
 
-    /* Process all 16 thermistor channels */
     for (int i = 0; i < numberOfThermistors; i++) {
 
-      /* Step 1: Median Filter (3-tap window) - spike elimination */
       uint16_t medianADC = applyMedianFilter(rawAdcBuffer[i], i);
-
-      /* Step 2: IIR Filter (alpha=1/8) - signal smoothing */
       filteredAdcBuffer[i] = applyIIRFilter(medianADC, i);
-
-      /* Step 3: Diagnostic verification (Short/Open protection) */
       readStatus = checkThermistorConnection(filteredAdcBuffer[i]);
 
-      /* Step 4: Physical unit conversion (thread-safe) */
-      if(readStatus == OK){
+//      if(readStatus == OK){
     	  if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
     		  tempBuffer[i] = convertVoltageToTemperature(
     				  convertBitsToVoltage(filteredAdcBuffer[i]));
     		  osMutexRelease(tempBufferMutexHandle);
     	  }
-      }
-      else{
-    	  /* Signal critical error and halt board to trigger SDC */
-    	  thermistorFault = 1;
-    	  sendReadingErrorInfoIntoCAN();
-    	  osDelay(5); 
-    	  Error_Handler();
-      }
+//      }
+//      else{
+//    	  thermistorFault = 1;
+//    	  sendReadingErrorInfoIntoCAN();
+//    	  osDelay(5); // Garante que o hardware CAN transmita o erro antes de prosseguir
+//    	  Error_Handler();
+//      }
     }
     osDelay(100);
   }
@@ -648,44 +624,34 @@ void xReadTempFunction(void *argument)
 
 /* USER CODE BEGIN Header_xSendCANFunction */
 /**
- * @brief  Thread de envio CAN e processamento de recepção (Prioridade: Acima do Normal)
- *
- * Responsável por:
- *   1. Drenar a fila de mensagens CAN recebidas (se testLoopback ativo)
- *   2. Copiar o buffer de temperaturas (protegido por mutex)
- *   3. Enviar as 16 temperaturas via CAN (8 quadros por burst)
- *   4. Piscar LED de heartbeat (GPIO PC7)
- *
- * Prioridade acima do normal para garantir que o envio CAN não
- * seja atrasado pela leitura de temperatura (que é mais lenta).
+ * @brief Function implementing the xSendCAN thread.
+ * @param argument: Not used
+ * @retval None
  */
 /* USER CODE END Header_xSendCANFunction */
 void xSendCANFunction(void *argument)
 {
   /* USER CODE BEGIN xSendCANFunction */
-  /* Main reporting loop (~10Hz update rate) */
-  float localTempBuffer[numberOfThermistors]; 
-  CAN_RxMsg_t rxMsg;                          
-
+  float localTempBuffer[numberOfThermistors];
+  CAN_RxMsg_t rxMsg;
+  /* Infinite loop */
   for (;;) {
-
-    /* ====== CAN Reception Handling (Loopback/Testing) ====== */
 #ifdef testLoopback
+    rxBurstCount = 0;
     while (osMessageQueueGet(canRxQueueHandle, &rxMsg, NULL, 0) == osOK) {
-      lastRxMsg = rxMsg;                       
-      rxLastId = rxMsg.header.Identifier;      
-      HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);   
+      lastRxMsg = rxMsg;
+      rxLastId = rxMsg.header.Identifier;
+//      rxCount++;
+//      rxBurstCount++;
+      HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);
     }
 #endif
 
-    /* ====== Temperature Reporting Block ====== */
-    /* Copy latest thermal data to local buffer using quick mutex lock */
     if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
       memcpy(localTempBuffer, tempBuffer, sizeof(localTempBuffer));
       osMutexRelease(tempBufferMutexHandle);
     }
 
-    /* Transmit burst to Master based on board identity */
 #ifdef slave1
     lastTxStatus = sendTemperatureToMaster(localTempBuffer, idSlave1Burst0);
 #endif
@@ -698,8 +664,6 @@ void xSendCANFunction(void *argument)
 #ifdef slave4
     lastTxStatus = sendTemperatureToMaster(localTempBuffer, idSlave4Burst0);
 #endif
-
-    /* Heartbeat LED: Toggles every 100ms to indicate OS health */
     HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_7);
 
     osDelay(100);
