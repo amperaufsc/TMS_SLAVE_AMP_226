@@ -51,7 +51,7 @@ uint16_t applyMedianFilter(uint16_t newReading, uint8_t index)
 }
 
 uint16_t applyIIRFilter(uint16_t newReading, uint8_t index){
-	filteredAdcBuffer[index] += (newReading - filteredAdcBuffer[index]) >> 3; // alpha = 1/8 log(2)8 = 3
+	filteredAdcBuffer[index] += (int16_t)(newReading - filteredAdcBuffer[index]) >> 3; // alpha = 1/8
 	return filteredAdcBuffer[index];
 }
 

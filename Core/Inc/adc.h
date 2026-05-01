@@ -13,16 +13,16 @@
 
 #define numberOfThermistors 16
 #define adcResolution 4095
-#define vcc 2.9
+#define vcc 3.3
 #define shortCircuitThreshold 100
 #define openCircuitThreshhold (adcResolution-100)
 
-/*T(V) - coefficients*/
-#define C4 (6.03)
-#define C3 (-40.82)
-#define C2 (105.64)
-#define C1 (-156.45)
-#define C0 (134.25)
+/*T(V) - coefficients  MF52 NTC 10K B3950*/
+#define C4 (3.477407)
+#define C3 (-33.005072)
+#define C2 (104.735668)
+#define C1 (-161.078689)
+#define C0 (128.920577)
 
 typedef enum {
     OK = 0,

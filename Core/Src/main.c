@@ -255,7 +255,7 @@ static void MX_ADC2_Init(void)
   hadc2.Init.ScanConvMode = ADC_SCAN_ENABLE;
   hadc2.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   hadc2.Init.LowPowerAutoWait = DISABLE;
-  hadc2.Init.ContinuousConvMode = DISABLE;
+  hadc2.Init.ContinuousConvMode = ENABLE;
   hadc2.Init.NbrOfConversion = 16;
   hadc2.Init.DiscontinuousConvMode = DISABLE;
   hadc2.Init.ExternalTrigConv = ADC_SOFTWARE_START;
@@ -596,7 +596,7 @@ void xSendCANFunction(void *argument)
       }
 
 #ifdef slave1
-	  sendTemperatureToMaster(localTempBuffer, idSlave1Burst0);
+//	  sendTemperatureToMaster(localTempBuffer, idSlave1Burst0);
 #endif
 #ifdef slave2
 	  sendTemperatureToMaster(localTempBuffer, idSlave2Burst0);
