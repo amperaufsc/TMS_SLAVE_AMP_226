@@ -76,9 +76,28 @@ const osThreadAttr_t xSendCAN_attributes = {
 osMutexId_t tempBufferMutexHandle;
 const osMutexAttr_t tempBufferMutex_attributes = {.name = "tempBufferMutex"};
 
+/* ===================== Buffers de aquisição ============================== */
+uint16_t rawAdcBuffer[numberOfThermistors];          // Buffer DMA p/ amostras brutas do ADC
+float tempBuffer[numberOfThermistors];               // Temperaturas processadas (compartilhado via mutex)
+extern uint16_t filteredAdcBuffer[numberOfThermistors]; // Definido em adc.c
+
+/* =============== Externs de variáveis definidas em can.c ================= */
+extern uint8_t FDCAN1TxData[8];
+extern FDCAN_TxHeaderTypeDef FDCAN1TxHeader;
+
+/* =================== Fila de recepção CAN ================================ */
+osMessageQueueId_t canRxQueueHandle;                 // Handle da fila (extern declarado em can.h)
+
 /* ===================== Flags de status do sistema ======================== */
 int thermistorFault = 0;                            // 1 = pelo menos um termistor com falha
 thermStatus readStatus = 0;                         // Status da última verificação de conexão
+
+/* ================ Variáveis de status/debug CAN ========================= */
+CAN_TxStatus_t lastTxStatus = CAN_TX_OK;            // Resultado do último burst TX
+#ifdef testLoopback
+CAN_RxMsg_t lastRxMsg;                               // Última mensagem recebida (debug)
+uint32_t rxLastId = 0;                               // Último ID recebido (debug)
+#endif
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -134,6 +153,7 @@ int main(void)
   MX_FDCAN1_Init();
   MX_ADC2_Init();
   /* USER CODE BEGIN 2 */
+  HAL_ADCEx_Calibration_Start(&hadc2, ADC_SINGLE_ENDED);
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -261,7 +281,7 @@ static void MX_ADC2_Init(void)
   hadc2.Init.ScanConvMode = ADC_SCAN_ENABLE;
   hadc2.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   hadc2.Init.LowPowerAutoWait = DISABLE;
-  hadc2.Init.ContinuousConvMode = DISABLE;
+  hadc2.Init.ContinuousConvMode = ENABLE;
   hadc2.Init.NbrOfConversion = 16;
   hadc2.Init.DiscontinuousConvMode = DISABLE;
   hadc2.Init.ExternalTrigConv = ADC_SOFTWARE_START;

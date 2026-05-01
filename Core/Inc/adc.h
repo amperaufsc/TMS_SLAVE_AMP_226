@@ -28,13 +28,13 @@
 #define openCircuitThreshhold (adcResolution-100)  // ADC > 3995 = circuito aberto (cabo rompido)
 
 /* ============ Coeficientes do polinômio T(V) de 4ª ordem ============= */
-/* Calibrados empiricamente para o modelo de NTC utilizado no acumulador.
+/* Calibrados empiricamente para o modelo MF52 NTC 10K B3950.
  * T(V) = C0 + C1·V + C2·V² + C3·V³ + C4·V⁴                           */
-#define C4 (6.03)
-#define C3 (-40.82)
-#define C2 (105.64)
-#define C1 (-156.45)
-#define C0 (134.25)
+#define C4 (3.477407)
+#define C3 (-33.005072)
+#define C2 (104.735668)
+#define C1 (-161.078689)
+#define C0 (128.920577)
 
 /* ================== Status de integridade do sensor ================== */
 typedef enum {
