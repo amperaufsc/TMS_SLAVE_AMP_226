@@ -661,6 +661,14 @@ void xReadTempFunction(void *argument)
 //    	  Error_Handler();
 //      }
     }
+
+#ifdef slave2
+    if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
+        tempBuffer[1] = tempBuffer[0];
+        osMutexRelease(tempBufferMutexHandle);
+    }
+#endif
+
     osDelay(100);
   }
   /* USER CODE END 5 */
@@ -707,7 +715,7 @@ void xSendCANFunction(void *argument)
 
     /* Transmit burst to Master based on board identity */
 #ifdef slave1
-//    lastTxStatus = sendTemperatureToMaster(localTempBuffer, idSlave1Burst0);
+    lastTxStatus = sendTemperatureToMaster(localTempBuffer, idSlave1Burst0);
 #endif
 #ifdef slave2
     lastTxStatus = sendTemperatureToMaster(localTempBuffer, idSlave2Burst0);
