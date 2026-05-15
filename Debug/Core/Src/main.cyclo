@@ -6,6 +6,6 @@
 ../Core/Src/main.c:533:13:MX_GPIO_Init	1
 ../Core/Src/main.c:570:6:HAL_ADC_ConvCpltCallback	2
 ../Core/Src/main.c:583:6:HAL_FDCAN_RxFifo0Callback	5
-../Core/Src/main.c:615:6:xReadTempFunction	4
-../Core/Src/main.c:691:6:xSendCANFunction	2
-../Core/Src/main.c:742:6:Error_Handler	1
+../Core/Src/main.c:615:6:xReadTempFunction	5
+../Core/Src/main.c:698:6:xSendCANFunction	2
+../Core/Src/main.c:749:6:Error_Handler	1

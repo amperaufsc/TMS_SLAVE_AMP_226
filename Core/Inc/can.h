@@ -28,9 +28,9 @@
  * IMPORTANT: Uncomment exactly ONE define per physical board.
  * Each Slave board must have a unique ID to avoid bus collisions.
  */
-#define slave1
+//#define slave1
 //#define slave2
-//#define slave3
+#define slave3
 //#define slave4
 
 /* ================== Test & Debug Flags =============================== */
