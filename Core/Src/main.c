@@ -670,8 +670,9 @@ void xReadTempFunction(void *argument)
 #endif
 #ifdef slave3
     if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
-        tempBuffer[1] = tempBuffer[0];
-        tempBuffer[12] = tempBuffer[0];
+        tempBuffer[1]  = tempBuffer[0]  + 0.12f;
+        tempBuffer[12] = tempBuffer[10] + 0.67f;
+        tempBuffer[13] = tempBuffer[0]  + 0.0910f;
         osMutexRelease(tempBufferMutexHandle);
     }
 #endif

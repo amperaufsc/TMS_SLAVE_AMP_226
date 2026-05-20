@@ -7,5 +7,5 @@
 ../Core/Src/main.c:570:6:HAL_ADC_ConvCpltCallback	2
 ../Core/Src/main.c:583:6:HAL_FDCAN_RxFifo0Callback	5
 ../Core/Src/main.c:615:6:xReadTempFunction	5
-../Core/Src/main.c:698:6:xSendCANFunction	2
-../Core/Src/main.c:749:6:Error_Handler	1
+../Core/Src/main.c:699:6:xSendCANFunction	2
+../Core/Src/main.c:750:6:Error_Handler	1
