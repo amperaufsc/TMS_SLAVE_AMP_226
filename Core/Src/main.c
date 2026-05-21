@@ -68,6 +68,13 @@ const osThreadAttr_t xSendCAN_attributes = {
 };
 /* USER CODE BEGIN PV */
 
+/* =================== Periféricos manuais (não-IOC) ===================== */
+/* TIM6: gatilho periódico do ADC2 a 10 Hz (TRGO=Update).
+ * IWDG: watchdog independente de hardware (~2s).
+ * Ambos vivem em USER CODE para sobreviver à regeneração via .ioc.       */
+TIM_HandleTypeDef  htim6;
+IWDG_HandleTypeDef hiwdg;
+
 /* ==================== Mutex for Temperature Buffer ===================== */
 /**
  * @brief Thread-safe protection for the tempBuffer[] array.
@@ -81,15 +88,14 @@ uint16_t rawAdcBuffer[numberOfThermistors];          // Buffer DMA p/ amostras b
 float tempBuffer[numberOfThermistors];               // Temperaturas processadas (compartilhado via mutex)
 extern uint16_t filteredAdcBuffer[numberOfThermistors]; // Definido em adc.c
 
-/* =============== Externs de variáveis definidas em can.c ================= */
-extern uint8_t FDCAN1TxData[8];
-extern FDCAN_TxHeaderTypeDef FDCAN1TxHeader;
+/* CAN1 TX globals (FDCAN1TxData / FDCAN1TxHeader) intentionally NOT externed:
+ * cada TX site agora constrói header + payload locais (ver can.c::initCan1TxHeader). */
 
 /* =================== Fila de recepção CAN ================================ */
 osMessageQueueId_t canRxQueueHandle;                 // Handle da fila (extern declarado em can.h)
 
 /* ===================== Flags de status do sistema ======================== */
-int thermistorFault = 0;                            // 1 = pelo menos um termistor com falha
+// int thermistorFault = 0;                         // Variável legada (não usada — bloco de detecção foi reescrito).
 thermStatus readStatus = 0;                         // Status da última verificação de conexão
 
 /* ================ Variáveis de status/debug CAN ========================= */
@@ -117,6 +123,49 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+/**
+ * @brief Inicializa TIM6 como gerador de TRGO periódico p/ trigger do ADC.
+ *        f_TIM6 = APB1Timer / ((PSC+1)(ARR+1)) = 85MHz / (8500 * 1000) = 10 Hz
+ *        TRGO=Update sai uma vez por ciclo, dispara a sequência de 16 conversões.
+ *        Sem IRQ — só o canal interno TRGO importa.
+ */
+static void MX_TIM6_Init_User(void)
+{
+	__HAL_RCC_TIM6_CLK_ENABLE();
+
+	htim6.Instance               = TIM6;
+	htim6.Init.Prescaler         = 8499;   /* 85MHz / 8500 = 10 kHz */
+	htim6.Init.CounterMode       = TIM_COUNTERMODE_UP;
+	htim6.Init.Period            = 999;    /* 10 kHz / 1000 = 10 Hz */
+	htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+	if (HAL_TIM_Base_Init(&htim6) != HAL_OK) {
+		Error_Handler();
+	}
+
+	TIM_MasterConfigTypeDef sMasterConfig = {0};
+	sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
+	sMasterConfig.MasterSlaveMode     = TIM_MASTERSLAVEMODE_DISABLE;
+	if (HAL_TIMEx_MasterConfigSynchronization(&htim6, &sMasterConfig) != HAL_OK) {
+		Error_Handler();
+	}
+}
+
+/**
+ * @brief Inicializa o IWDG (Independent Watchdog).
+ *        LSI nominal = 32 kHz. Prescaler 64 → 500 Hz. Reload 999 → ~2s timeout.
+ *        Refresh deve ser chamado pelo xSendCAN a cada 100ms (margem 20×).
+ */
+static void MX_IWDG_Init_User(void)
+{
+	hiwdg.Instance       = IWDG;
+	hiwdg.Init.Prescaler = IWDG_PRESCALER_64;
+	hiwdg.Init.Window    = IWDG_WINDOW_DISABLE;
+	hiwdg.Init.Reload    = 999;
+	if (HAL_IWDG_Init(&hiwdg) != HAL_OK) {
+		Error_Handler();
+	}
+}
 
 /* USER CODE END 0 */
 
@@ -154,6 +203,14 @@ int main(void)
   MX_ADC2_Init();
   /* USER CODE BEGIN 2 */
   HAL_ADCEx_Calibration_Start(&hadc2, ADC_SINGLE_ENDED);
+
+  /* Inicializa periféricos manuais (não-IOC): TIM6 (gatilho ADC) + IWDG (watchdog). */
+  MX_TIM6_Init_User();
+  MX_IWDG_Init_User();
+
+  /* Arma a watchdog de RX da Master: a partir daqui, se passar
+   * CAN_RX_MASTER_TIMEOUT_MS sem nenhum frame da Master, dispara SDC. */
+  lastMasterRxTick = HAL_GetTick();
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -287,8 +344,12 @@ static void MX_ADC2_Init(void)
   hadc2.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc2.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
   hadc2.Init.DMAContinuousRequests = DISABLE;
-  hadc2.Init.Overrun = ADC_OVR_DATA_PRESERVED;
-  hadc2.Init.OversamplingMode = DISABLE;
+  hadc2.Init.Overrun = ADC_OVR_DATA_OVERWRITTEN;
+  hadc2.Init.OversamplingMode = ENABLE;
+  hadc2.Init.Oversampling.Ratio         = ADC_OVERSAMPLING_RATIO_16;
+  hadc2.Init.Oversampling.RightBitShift = ADC_RIGHTBITSHIFT_4;
+  hadc2.Init.Oversampling.TriggeredMode = ADC_TRIGGEREDMODE_SINGLE_TRIGGER;
+  hadc2.Init.Oversampling.OversamplingStopReset = ADC_REGOVERSAMPLING_CONTINUED_MODE;
   if (HAL_ADC_Init(&hadc2) != HAL_OK)
   {
     Error_Handler();
@@ -442,7 +503,16 @@ static void MX_ADC2_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN ADC2_Init 2 */
-
+  /* Override IOC: trigger externo TIM6_TRGO + single-shot.
+   * TIM6 não está no .ioc (vive em USER CODE), então não pode aparecer no
+   * dropdown de trigger do CubeMX — patcheamos aqui após HAL_ADC_Init().
+   * Re-chamar HAL_ADC_Init reconfigura os registradores sem perder canais. */
+  hadc2.Init.ContinuousConvMode   = DISABLE;
+  hadc2.Init.ExternalTrigConv     = ADC_EXTERNALTRIG_T6_TRGO;
+  hadc2.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_RISING;
+  if (HAL_ADC_Init(&hadc2) != HAL_OK) {
+    Error_Handler();
+  }
   /* USER CODE END ADC2_Init 2 */
 
 }
@@ -501,9 +571,8 @@ static void MX_FDCAN1_Init(void)
   HAL_FDCAN_ActivateNotification(&hfdcan1, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0);
   HAL_FDCAN_Start(&hfdcan1);
 
-  FDCAN1TxHeader.FDFormat = FDCAN_CLASSIC_CAN;
-  FDCAN1TxHeader.IdType = FDCAN_STANDARD_ID;
-  FDCAN1TxHeader.BitRateSwitch = FDCAN_BRS_OFF;
+  /* Note: FDCAN1TxHeader global removida — todo TX site constroi header local
+   * via can.c::initCan1TxHeader() (todos os 9 campos populados). */
   /* USER CODE END FDCAN1_Init 2 */
 
 }
@@ -589,6 +658,13 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
 
       if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &rxMsg.header,
                                  rxMsg.data) == HAL_OK) {
+        /* Watchdog de comunicação: registra tick do último frame recebido.
+         * Qualquer frame conta (Master heartbeat 0x00A em particular).
+         * xSendCAN dispara SDC se passar de CAN_RX_MASTER_TIMEOUT_MS sem RX. */
+        if (rxMsg.header.Identifier == idMaster) {
+          lastMasterRxTick = HAL_GetTick();
+        }
+
         xQueueSendFromISR((QueueHandle_t)canRxQueueHandle, &rxMsg,
                           &xHigherPriorityTaskWoken);
         portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
@@ -615,15 +691,34 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
 void xReadTempFunction(void *argument)
 {
   /* USER CODE BEGIN 5 */
-  /* Main thermal acquisition loop (~10Hz) */
+  /* Main thermal acquisition loop (~10Hz) — timing agora controlado por TIM6_TRGO
+   * (sem osDelay no loop; o bloqueio fica no Take aguardando DMA Complete). */
   static bool filtersInitialized = false;
+  uint8_t   adcTimeoutCount = 0;
+
+  /* Arma o ADC para o primeiro trigger e liga o gerador TIM6 (TRGO=Update, 10Hz). */
+  if (HAL_ADC_Start_DMA(&hadc2, (uint32_t *)rawAdcBuffer, numberOfThermistors) != HAL_OK) {
+    Error_Handler();
+  }
+  if (HAL_TIM_Base_Start(&htim6) != HAL_OK) {
+    Error_Handler();
+  }
 
   for (;;) {
-    /* Trigger hardware scan via DMA */
-    HAL_ADC_Start_DMA(&hadc2, (uint32_t *)rawAdcBuffer, numberOfThermistors);
-
-    /* Wait for completion signal from HAL_ADC_ConvCpltCallback */
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    /* Wait for completion signal from HAL_ADC_ConvCpltCallback.
+     * Timeout 500ms (5× o período) detecta TIM6/DMA travado — depois de 3 timeouts
+     * consecutivos dispara SDC. xSendCAN ainda refresca o IWDG enquanto isso. */
+    if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(500)) == 0) {
+      adcTimeoutCount++;
+      if (adcTimeoutCount >= 3) {
+        Error_Handler();  /* ADC freeze: trigger/DMA não está completando */
+      }
+      /* Re-arma DMA — talvez tenha tido OVR ou estado inconsistente */
+      HAL_ADC_Stop_DMA(&hadc2);
+      HAL_ADC_Start_DMA(&hadc2, (uint32_t *)rawAdcBuffer, numberOfThermistors);
+      continue;
+    }
+    adcTimeoutCount = 0;
 
     HAL_ADC_Stop_DMA(&hadc2);
 
@@ -634,50 +729,56 @@ void xReadTempFunction(void *argument)
     }
 
     /* Process all 16 thermistor channels */
+    bool thermFaultThisCycle = false;
     for (int i = 0; i < numberOfThermistors; i++) {
-
-      /* Step 1: Median Filter (3-tap window) - spike elimination */
+      /* Step 1: Median Filter (5-tap window) - spike elimination */
       uint16_t medianADC = applyMedianFilter(rawAdcBuffer[i], i);
 
-      /* Step 2: IIR Filter (alpha=1/8) - signal smoothing */
-      filteredAdcBuffer[i] = applyIIRFilter(medianADC, i);
+      /* Step 2: IIR Filter (alpha=1/8) - signal smoothing. Função já escreve em
+       * filteredAdcBuffer[i] internamente — não reatribuir (era store duplicado). */
+      (void)applyIIRFilter(medianADC, i);
 
       /* Step 3: Diagnostic verification (Short/Open protection) */
       readStatus = checkThermistorConnection(filteredAdcBuffer[i]);
-
-      /* Step 4: Physical unit conversion (thread-safe) */
-//      if(readStatus == OK){
-    	  if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
-    		  tempBuffer[i] = convertVoltageToTemperature(
-    				  convertBitsToVoltage(filteredAdcBuffer[i]));
-    		  osMutexRelease(tempBufferMutexHandle);
-    	  }
-//      }
-//      else{
-//    	  /* Signal critical error and halt board to trigger SDC */
-//    	  thermistorFault = 1;
-//    	  sendReadingErrorInfoIntoCAN();
-//    	  osDelay(5);
-//    	  Error_Handler();
-//      }
+      if (readStatus != OK) {
+        thermFaultThisCycle = true;
+      }
     }
 
-#ifdef slave2
+    /* Step 4: Physical unit conversion sob um único mutex acquire/release.
+     * NOTA (race conhecida): granularizar por iteração permitiria xSendCAN
+     * (prioridade maior) preemptar no meio e tirar snapshot Frankenstein.
+     * Mantemos UM acquire em bloco — burst CAN sempre vê um estado coerente. */
     if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
-        tempBuffer[1] = tempBuffer[0];
-        osMutexRelease(tempBufferMutexHandle);
-    }
+      for (int i = 0; i < numberOfThermistors; i++) {
+        tempBuffer[i] = convertVoltageToTemperature(
+                          convertBitsToVoltage(filteredAdcBuffer[i]));
+      }
+#ifdef slave2
+      /* HACK: termistor 1 do slave 2 fisicamente quebrado — espelha do canal 0 */
+      tempBuffer[1] = tempBuffer[0];
 #endif
 #ifdef slave3
-    if (osMutexAcquire(tempBufferMutexHandle, osWaitForever) == osOK) {
-        tempBuffer[1]  = tempBuffer[0]  + 0.12f;
-        tempBuffer[12] = tempBuffer[10] + 0.67f;
-        tempBuffer[13] = tempBuffer[0]  + 0.0910f;
-        osMutexRelease(tempBufferMutexHandle);
-    }
+      /* HACK: termistores 1, 12, 13 do slave 3 fisicamente quebrados — derivados */
+      tempBuffer[1]  = tempBuffer[0]  + 0.12f;
+      tempBuffer[12] = tempBuffer[10] + 0.67f;
+      tempBuffer[13] = tempBuffer[0]  + 0.0910f;
 #endif
+      osMutexRelease(tempBufferMutexHandle);
+    }
 
-    osDelay(100);
+    /* Step 5: Se algum termistor desconectado, reporta na CAN e dispara SDC.
+     * Religado conforme decisão de safety — README promete essa proteção. */
+    if (thermFaultThisCycle) {
+      sendReadingErrorInfoIntoCAN();
+      osDelay(5);          /* dá tempo do frame entrar na FIFO antes do halt */
+      Error_Handler();     /* Trigger SDC: open/short = bateria desprotegida */
+    }
+
+    /* Re-arma DMA para o próximo trigger do TIM6 — sem osDelay aqui. */
+    if (HAL_ADC_Start_DMA(&hadc2, (uint32_t *)rawAdcBuffer, numberOfThermistors) != HAL_OK) {
+      Error_Handler();
+    }
   }
   /* USER CODE END 5 */
 }
@@ -699,19 +800,35 @@ void xReadTempFunction(void *argument)
 void xSendCANFunction(void *argument)
 {
   /* USER CODE BEGIN xSendCANFunction */
-  /* Main reporting loop (~10Hz update rate) */
-  float localTempBuffer[numberOfThermistors]; 
-  CAN_RxMsg_t rxMsg;                          
+  /* Main reporting loop (~10Hz update rate, period precision via osDelayUntil) */
+  float localTempBuffer[numberOfThermistors];
+  CAN_RxMsg_t rxMsg;
+  uint32_t nextWake = osKernelGetTickCount();
 
   for (;;) {
+
+    /* ====== Watchdog hardware refresh ====== */
+    /* IWDG reload = 2s; chamado a cada 100ms tem 20× de margem. Se essa task
+     * congelar (deadlock, stack overflow, etc.), IWDG reseta a CPU. */
+    HAL_IWDG_Refresh(&hiwdg);
+
+    /* ====== RX Watchdog: Master ainda viva? ====== */
+    /* Se passou >CAN_RX_MASTER_TIMEOUT_MS sem frame da Master, a rede está morta —
+     * sem essa decisão central de comando, o slave decide pelo SDC defensivo. */
+    if ((HAL_GetTick() - lastMasterRxTick) > CAN_RX_MASTER_TIMEOUT_MS) {
+      Error_Handler();  /* SDC: master perdida */
+    }
 
     /* ====== CAN Reception Handling (Loopback/Testing) ====== */
 #ifdef testLoopback
     while (osMessageQueueGet(canRxQueueHandle, &rxMsg, NULL, 0) == osOK) {
-      lastRxMsg = rxMsg;                       
-      rxLastId = rxMsg.header.Identifier;      
-      HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);   
+      lastRxMsg = rxMsg;
+      rxLastId = rxMsg.header.Identifier;
+      HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);
     }
+#else
+    /* Drena a queue mesmo em produção para não acumular — não processa payload */
+    while (osMessageQueueGet(canRxQueueHandle, &rxMsg, NULL, 0) == osOK) { }
 #endif
 
     /* ====== Temperature Reporting Block ====== */
@@ -721,24 +838,15 @@ void xSendCANFunction(void *argument)
       osMutexRelease(tempBufferMutexHandle);
     }
 
-    /* Transmit burst to Master based on board identity */
-#ifdef slave1
-    lastTxStatus = sendTemperatureToMaster(localTempBuffer, idSlave1Burst0);
-#endif
-#ifdef slave2
-    lastTxStatus = sendTemperatureToMaster(localTempBuffer, idSlave2Burst0);
-#endif
-#ifdef slave3
-    lastTxStatus = sendTemperatureToMaster(localTempBuffer, idSlave3Burst0);
-#endif
-#ifdef slave4
-    lastTxStatus = sendTemperatureToMaster(localTempBuffer, idSlave4Burst0);
-#endif
+    /* Transmit burst to Master — baseID derivado uma vez via SLAVE_ID. */
+    lastTxStatus = sendTemperatureToMaster(localTempBuffer, (uint16_t)idSlaveBurst0);
 
     /* Heartbeat LED: Toggles every 100ms to indicate OS health */
     HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_7);
 
-    osDelay(100);
+    /* osDelayUntil dá período preciso (compensa jitter de execução). */
+    nextWake += 100;
+    osDelayUntil(nextWake);
   }
   /* USER CODE END xSendCANFunction */
 }

@@ -1,7 +1,8 @@
-../Core/Src/adc.c:31:10:median3	4
-../Core/Src/adc.c:52:10:applyMedianFilter	2
-../Core/Src/adc.c:71:10:applyIIRFilter	1
-../Core/Src/adc.c:78:7:convertBitsToVoltage	1
-../Core/Src/adc.c:82:7:convertVoltageToTemperature	3
-../Core/Src/adc.c:102:13:checkThermistorConnection	3
-../Core/Src/adc.c:113:6:initTemperatureFilters	3
+../Core/Src/adc.c:31:17:median5	10
+../Core/Src/adc.c:51:10:median3	4
+../Core/Src/adc.c:70:10:applyMedianFilter	2
+../Core/Src/adc.c:88:10:applyIIRFilter	2
+../Core/Src/adc.c:97:7:convertBitsToVoltage	1
+../Core/Src/adc.c:101:7:convertVoltageToTemperature	3
+../Core/Src/adc.c:122:13:checkThermistorConnection	3
+../Core/Src/adc.c:133:6:initTemperatureFilters	3

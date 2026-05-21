@@ -71,12 +71,12 @@ Inicializa os buffers internos dos filtros com a primeira leitura real do ADC. D
 Retorna a mediana de 3 valores usando comparações e swaps manuais. É a base do filtro de mediana que elimina picos espúrios (spikes) de ruído eletromagnético sem introduzir atraso significativo.
 
 #### `uint16_t applyMedianFilter(uint16_t newReading, uint8_t index)`
-Mantém um buffer circular de 3 amostras por canal. A cada nova leitura, insere o valor no buffer, calcula a mediana das 3 últimas amostras e retorna o resultado. O `index` identifica qual dos 16 termistores está sendo processado.
+Mantém um buffer circular de **5 amostras** por canal (constante `MEDIAN_WINDOW_LEN` em `adc.h`). A cada nova leitura, insere o valor no buffer, calcula a mediana das 5 últimas amostras (sorting network `median5()` com 9 comparações) e retorna o resultado. 5-tap mata bursts EMI de até 2 amostras consecutivas (3-tap só pega spike isolado). O `index` identifica qual dos 16 termistores está sendo processado.
 
 #### `uint16_t applyIIRFilter(uint16_t newReading, uint8_t index)`
 Filtro IIR (Infinite Impulse Response) de primeira ordem com coeficiente α = 1/8. Implementado com shift de bits (`>> 3`) para evitar operações de ponto flutuante. Suaviza as oscilações residuais que o filtro de mediana não captura completamente.
 
-**Cadeia completa de filtragem:** `ADC Bruto → Mediana (3 amostras) → IIR (α=1/8) → Valor Filtrado`
+**Cadeia completa de filtragem:** `ADC c/ oversampling 16× → Mediana (5 amostras) → IIR (α=1/8) → Valor Filtrado`
 
 #### `float convertBitsToVoltage(uint16_t rawAdcVal)`
 Converte o valor bruto do ADC (0–4095) para tensão real (0–3.3V) com a fórmula:
@@ -208,27 +208,32 @@ Chamada automaticamente quando uma mensagem CAN chega na FIFO 0 do FDCAN1. Usa o
 ##### `void xReadTempFunction(void *argument)` — Prioridade: Normal
 Responsável pela aquisição e processamento dos 16 canais de temperatura.
 
-**Fluxo a cada iteração (100ms):**
-1. Inicia uma conversão DMA do ADC2 com `HAL_ADC_Start_DMA()`.
-2. **Dorme** no `ulTaskNotifyTake()` até o DMA completar a transferência.
-3. Para o DMA com `HAL_ADC_Stop_DMA()`.
-4. Na primeira execução, inicializa os filtros (`initTemperatureFilters`).
-5. Para cada um dos 16 canais:
-   - Aplica filtro de mediana (3 amostras).
-   - Aplica filtro IIR (α = 1/8).
-   - Verifica integridade do sensor (`checkThermistorConnection`).
-   - Adquire o **Mutex** `tempBufferMutex` e grava a temperatura convertida no buffer compartilhado.
-6. Espera 100ms (`osDelay(100)`) e repete.
+**Inicialização (uma vez):**
+1. Arma o DMA do ADC2 (`HAL_ADC_Start_DMA`) — ADC fica em espera por trigger externo.
+2. Inicia o `TIM6` que gera TRGO a 10 Hz — daqui em diante a amostragem é controlada por hardware (sem jitter de RTOS).
+
+**Fluxo a cada iteração (~100 ms, despertado pelo DMA Complete):**
+1. **Dorme** no `ulTaskNotifyTake()` com timeout de 500 ms até o DMA completar. Se timeout estourar 3× seguidas → `Error_Handler` (ADC freeze).
+2. Para o DMA com `HAL_ADC_Stop_DMA()`.
+3. Na primeira execução, inicializa os filtros (`initTemperatureFilters`).
+4. Para cada um dos 16 canais:
+   - Filtro de mediana 5-tap → IIR (α = 1/8) → `checkThermistorConnection`.
+5. **Adquire o mutex uma única vez** e converte todos os 16 ADC→Volts→°C em bloco (snapshot consistente para `xSendCAN`).
+6. Aplica patches `slave2`/`slave3` (termistores fisicamente quebrados) sob o mesmo mutex.
+7. Se algum termistor reportou Short/Open → manda frame de erro na CAN + `Error_Handler` (SDC).
+8. Re-arma `HAL_ADC_Start_DMA` para o próximo trigger do TIM6 e volta para o `Take`.
 
 ##### `void xSendCANFunction(void *argument)` — Prioridade: Acima do Normal
-Responsável pelo envio periódico das temperaturas e pelo processamento de mensagens recebidas.
+Responsável pelo envio periódico das temperaturas, refresh do IWDG e watchdog de RX da Master.
 
-**Fluxo a cada iteração (100ms):**
-1. **(Modo testLoopback):** Drena todas as mensagens pendentes da Message Queue CAN e copia a última mensagem recebida para `lastRxMsg` (visível no Live Expressions do debugger).
-2. Adquire o **Mutex** e copia o buffer de temperaturas para um buffer local.
-3. Chama `sendTemperatureToMaster()` com o ID do slave ativo, enviando 8 quadros CAN com as 16 temperaturas.
-4. Alterna o LED do usuário (GPIO PC7) como heartbeat visual.
-5. Espera 100ms (`osDelay(100)`) e repete.
+**Fluxo a cada iteração (100 ms preciso via `osDelayUntil`):**
+1. `HAL_IWDG_Refresh()` — alimenta o watchdog (margem de 20× sobre os 2 s de timeout).
+2. Watchdog de RX: se `HAL_GetTick() - lastMasterRxTick > 2000` → `Error_Handler` (Master perdida).
+3. Drena a fila de mensagens RX (em produção descarta payload; em `testLoopback` salva `lastRxMsg` para debug).
+4. Adquire o **Mutex** e copia o buffer de temperaturas para um buffer local.
+5. Chama `sendTemperatureToMaster()` com `idSlaveBurst0` (derivado de `SLAVE_ID`), enviando 8 quadros CAN com as 16 temperaturas.
+6. Alterna o LED do usuário (GPIO PC7) como heartbeat visual.
+7. `osDelayUntil(nextWake += 100)` — período fixo sem drift cumulativo.
 
 ---
 
@@ -246,10 +251,14 @@ Ação de último recurso (falha crítica):
 
 | Proteção | Implementação | Localização |
 |----------|--------------|-------------|
-| **Ruído do ADC** | Filtro de mediana + IIR em cascata | `adc.c` |
-| **Termistor aberto/curto** | Verificação de faixa do ADC | `checkThermistorConnection()` |
+| **Ruído do ADC** | Oversampling 16× hardware + mediana 5-tap + IIR α=1/8 | `adc.c` |
+| **Termistor aberto/curto** | Faixa do ADC ([100, 3995]) → SDC se fora | `xReadTemp` + `sendReadingErrorInfoIntoCAN()` |
 | **Falha de rede CAN (TX)** | Contador de 10 falhas consecutivas → Shutdown | `sendTemperatureToMaster()` |
-| **Race condition no buffer** | Mutex (`tempBufferMutex`) entre threads | `xReadTemp` / `xSendCAN` |
+| **Bus-off detection** | `HAL_FDCAN_GetProtocolStatus().BusOff` + Stop/Start recovery | `sendSingleFrame()` |
+| **Master perdida (RX)** | Timestamp do último RX; >2 s sem heartbeat → SDC | `xSendCAN` + `HAL_FDCAN_RxFifo0Callback` |
+| **Race condition no buffer** | Mutex (`tempBufferMutex`) em bloco único entre threads | `xReadTemp` / `xSendCAN` |
+| **ADC freeze (DMA/trigger travado)** | Timeout 500 ms no `ulTaskNotifyTake` + re-arm; 3× consecutivos = SDC | `xReadTemp` |
+| **CPU congelada / deadlock** | IWDG hardware ~2 s (refresh via `xSendCAN`) | `MX_IWDG_Init_User` + `HAL_IWDG_Refresh` |
 | **Perda de msgs CAN (RX)** | Message Queue com 16 slots de buffer | `HAL_FDCAN_RxFifo0Callback()` |
 | **Travamento na ISR** | Deferred Interrupt Processing (ISR mínima) | Callbacks em `main.c` |
 
@@ -259,9 +268,11 @@ Ação de último recurso (falha crítica):
 
 | Periférico | Configuração |
 |------------|-------------|
-| **ADC2** | 16 canais, Scan Mode, DMA contínuo, 640.5 ciclos de amostragem |
-| **FDCAN1** | Modo Normal, 500 kbps (Prescaler=10, Seg1=22, Seg2=11), Filtro global aceita tudo no FIFO0 |
-| **DMA1 Ch1** | Ligado ao ADC2, prioridade 5 (compatível FreeRTOS) |
+| **ADC2** | 16 canais, Scan Mode, 640.5 ciclos de amostragem, **oversampling 16×** (shift 4), trigger externo `TIM6_TRGO` rising, `Overrun=DATA_OVERWRITTEN` |
+| **TIM6** | Gerador de TRGO a 10 Hz (PSC=8499, ARR=999). Inicializado em USER CODE (não no .ioc) p/ sobreviver à regeneração. |
+| **FDCAN1** | Modo Normal, 500 kbps (Prescaler=5, Seg1=26, Seg2=7), Filtro global aceita tudo no FIFO0, AutoRetransmission=DISABLE |
+| **IWDG** | Watchdog independente, prescaler 64, reload 999 → ~2s timeout. Refresh feito por `xSendCAN` a cada 100 ms. |
+| **DMA1 Ch1** | Ligado ao ADC2, modo NORMAL (não-circular), prioridade 5 (compatível FreeRTOS) |
 | **FreeRTOS** | CMSIS-RTOS v2, 2 threads + 1 mutex + 1 message queue |
 | **GPIO PC7** | Saída — LED do usuário (heartbeat) |
 | **GPIO PC8** | Saída — Pino de Shutdown (falha crítica) |
@@ -274,10 +285,11 @@ Ação de último recurso (falha crítica):
 
 | Define | Arquivo | Efeito |
 |--------|---------|--------|
-| `slave1` / `slave2` / `slave3` / `slave4` | `can.h` | Seleciona a identidade (IDs CAN) da placa física |
+| `SLAVE_ID` (1, 2, 3 ou 4) | `can.h` | **Ponto único** de identificação da placa. Deriva `idSlaveBurst0` e `idSlaveError` automaticamente. Os defines legacy `slave1..slave4` continuam disponíveis (gerados a partir de `SLAVE_ID`) para `#ifdef` de patches específicos. |
 | `testLoopback` | `can.h` | Habilita a drenagem da Message Queue de RX para debug em Internal Loopback |
-| `USE_FITTING_CURVE` | `adc.h` | Usa polinômio calibrado T(V) de 4ª ordem para conversão de temperatura |
+| `USE_FITTING_CURVE` | `adc.h` | Usa polinômio T(V) de 4ª ordem (Horner) para conversão de temperatura |
 | `USE_STEINHART_HART` | `adc.h` | Usa equação Beta do NTC (datasheet) para conversão de temperatura |
+| `MEDIAN_WINDOW_LEN` | `adc.h` | Tamanho da janela do filtro de mediana (padrão 5; trocar para 3 se preferir latência menor) |
 
 ---
 

@@ -23,9 +23,11 @@
 /* ========================= Constantes do ADC ========================= */
 #define numberOfThermistors 16             // Quantidade de sensores NTC no acumulador
 #define adcResolution 4095                 // Resolução máxima do ADC de 12 bits (2^12 - 1)
-#define vcc 3.3                            // Tensão de referência do ADC (Volts)
+#define vcc 3.3f                           // Tensão de referência do ADC (Volts) — 'f' evita promoção a double
 #define shortCircuitThreshold 100          // ADC < 100 = curto-circuito no termistor
-#define openCircuitThreshhold (adcResolution-100)  // ADC > 3995 = circuito aberto (cabo rompido)
+#define openCircuitThreshold (adcResolution-100)   // ADC > 3995 = circuito aberto (cabo rompido)
+/* Median filter window length — escolha ímpar; 5 é mais resiliente a bursts EMI que 3 */
+#define MEDIAN_WINDOW_LEN 5
 
 /* ============ Método de conversão de temperatura ===================== */
 /* Descomente EXATAMENTE UM dos defines abaixo:

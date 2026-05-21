@@ -1,3 +1,4 @@
-../Core/Src/can.c:53:23:sendSingleFrame	6
-../Core/Src/can.c:92:16:sendTemperatureToMaster	6
-../Core/Src/can.c:127:6:sendReadingErrorInfoIntoCAN	2
+../Core/Src/can.c:40:20:initCan1TxHeader	1
+../Core/Src/can.c:69:23:sendSingleFrame	6
+../Core/Src/can.c:110:16:sendTemperatureToMaster	6
+../Core/Src/can.c:148:6:sendReadingErrorInfoIntoCAN	2

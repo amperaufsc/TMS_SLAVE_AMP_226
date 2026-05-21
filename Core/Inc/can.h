@@ -25,13 +25,27 @@
 
 /* ================ Slave Identity Selection =========================== */
 /**
- * IMPORTANT: Uncomment exactly ONE define per physical board.
- * Each Slave board must have a unique ID to avoid bus collisions.
+ * IMPORTANT: define SLAVE_ID once with the physical board number (1..4).
+ * Os legacy defines `slaveN` continuam disponíveis (derivados) — assim os
+ * #ifdef antigos no main.c continuam compilando, mas trocar de placa = 1 linha.
  */
-//#define slave1
-//#define slave2
-#define slave3
-//#define slave4
+#define SLAVE_ID 3
+
+#if   SLAVE_ID == 1
+  #define slave1
+#elif SLAVE_ID == 2
+  #define slave2
+#elif SLAVE_ID == 3
+  #define slave3
+#elif SLAVE_ID == 4
+  #define slave4
+#else
+  #error "SLAVE_ID must be 1, 2, 3 or 4"
+#endif
+
+/* IDs derivados — não precisa editar ao trocar de placa */
+#define idSlaveBurst0  (0x010 * SLAVE_ID)
+#define idSlaveError   (0x050 + (SLAVE_ID - 1))
 
 /* ================== Test & Debug Flags =============================== */
 /**
@@ -66,6 +80,8 @@
 #define CAN_TX_RETRY_MAX      20
 /** @brief Consecutive failed frames before triggering SDC Shutdown */
 #define CAN_TX_FAULT_THRESHOLD 10
+/** @brief Timeout (ms) sem receber heartbeat da Master antes de SDC */
+#define CAN_RX_MASTER_TIMEOUT_MS 2000
 
 /* ================== Transmission Status Types ======================== */
 typedef enum {
@@ -97,5 +113,9 @@ typedef struct {
 
 /** @brief Handle for the global RX Message Queue (defined in main.c) */
 extern osMessageQueueId_t canRxQueueHandle;
+
+/** @brief Tick (HAL_GetTick) do último frame recebido da Master.
+ *         Atualizado na ISR de RX, lido pela watchdog de comunicação no xSendCAN. */
+extern volatile uint32_t lastMasterRxTick;
 
 #endif /* INC_CAN_H_ */

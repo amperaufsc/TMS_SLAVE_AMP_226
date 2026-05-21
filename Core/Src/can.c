@@ -25,13 +25,29 @@
 
 /* ================== External Globals from main.c ===================== */
 extern FDCAN_HandleTypeDef hfdcan1;
-/** @brief Buffer for outcoming 8-byte payload */
-uint8_t FDCAN1TxData[8];
-/** @brief Header for transmission (ID, DLC, etc.) */
-FDCAN_TxHeaderTypeDef FDCAN1TxHeader;
 
 /** @brief Persistent counter for consecutive TX failures across all channels */
 static uint8_t canConsecutiveFailures = 0;
+
+/** @brief Última recepção da Master (definida aqui, declarada extern em can.h).
+ *         volatile pois é atualizada na ISR e lida no thread context. */
+volatile uint32_t lastMasterRxTick = 0;
+
+/* ==================== Internal Helpers =============================== */
+
+/** @brief Populate every field of a Standard-ID classic CAN frame header.
+ *         Local helper — each TX call site builds its own header (no shared global race). */
+static inline void initCan1TxHeader(FDCAN_TxHeaderTypeDef *h, uint16_t id) {
+	h->Identifier          = id;
+	h->IdType              = FDCAN_STANDARD_ID;
+	h->TxFrameType         = FDCAN_DATA_FRAME;
+	h->DataLength          = FDCAN_DLC_BYTES_8;
+	h->ErrorStateIndicator = FDCAN_ESI_ACTIVE;
+	h->BitRateSwitch       = FDCAN_BRS_OFF;
+	h->FDFormat            = FDCAN_CLASSIC_CAN;
+	h->TxEventFifoControl  = FDCAN_NO_TX_EVENTS;
+	h->MessageMarker       = 0;
+}
 
 /* ==================== Internal Static Functions ====================== */
 
@@ -52,23 +68,25 @@ static uint8_t canConsecutiveFailures = 0;
  */
 static CAN_TxStatus_t sendSingleFrame(uint16_t identifier, uint8_t *data)
 {
-	/* Peripheral health check */
-	if (hfdcan1.State != HAL_FDCAN_STATE_BUSY)
-	{
+	/* Bus-off detection: HAL State não muda em bus-off, então usa GetProtocolStatus.
+	 * Se bus-off, dispara recovery (Stop+Start arma o wait de 11×128 bits recessivos)
+	 * e conta como falha. Próximo call vai checar de novo. */
+	FDCAN_ProtocolStatusTypeDef protoStatus;
+	HAL_FDCAN_GetProtocolStatus(&hfdcan1, &protoStatus);
+	if (protoStatus.BusOff) {
+		HAL_FDCAN_Stop(&hfdcan1);
+		HAL_FDCAN_Start(&hfdcan1);
 		canConsecutiveFailures++;
-		if (canConsecutiveFailures >= CAN_TX_FAULT_THRESHOLD) {
-			return CAN_TX_FATAL;
-		}
-		return CAN_TX_FAIL;
+		return (canConsecutiveFailures >= CAN_TX_FAULT_THRESHOLD) ? CAN_TX_FATAL : CAN_TX_FAIL;
 	}
 
-	/* Setup Header */
-	FDCAN1TxHeader.Identifier = identifier;
-	FDCAN1TxHeader.DataLength = FDCAN_DLC_BYTES_8;
+	/* Build header locally — sem global shared race */
+	FDCAN_TxHeaderTypeDef txHeader;
+	initCan1TxHeader(&txHeader, identifier);
 
 	uint8_t retry = 0;
 	/* Attempt to queue message in hardware FIFO */
-	while (HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1TxHeader, data) != HAL_OK)
+	while (HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &txHeader, data) != HAL_OK)
 	{
 		osDelay(1); // Yield 1ms to other RTOS tasks while waiting for FIFO space
 		if (++retry >= CAN_TX_RETRY_MAX)
@@ -95,6 +113,9 @@ CAN_TxStatus_t sendTemperatureToMaster(float buffer[], uint16_t baseID)
 	uint8_t frames = (numberOfThermistors + 1) / 2;
 	CAN_TxStatus_t worstResult = CAN_TX_OK;
 
+	/* Local TX payload — sem global shared race */
+	uint8_t txData[8];
+
 	for (uint8_t frame = 0; frame < frames; frame++)
 	{
 		uint8_t i = frame * 2;
@@ -103,11 +124,11 @@ CAN_TxStatus_t sendTemperatureToMaster(float buffer[], uint16_t baseID)
 		 * Use memcpy to follow strict aliasing rules for safety. */
 		float temp1 = buffer[i];
 		float temp2 = (i + 1 < numberOfThermistors) ? buffer[i + 1] : buffer[i];
-		memcpy(&FDCAN1TxData[0], &temp1, sizeof(float)); // Bytes 0-3
-		memcpy(&FDCAN1TxData[4], &temp2, sizeof(float)); // Bytes 4-7
+		memcpy(&txData[0], &temp1, sizeof(float)); // Bytes 0-3
+		memcpy(&txData[4], &temp2, sizeof(float)); // Bytes 4-7
 
 		/* IDs are sequential within the burst: baseID, baseID+1, etc. */
-		CAN_TxStatus_t result = sendSingleFrame(baseID + frame, FDCAN1TxData);
+		CAN_TxStatus_t result = sendSingleFrame(baseID + frame, txData);
 
 		if (result == CAN_TX_FATAL)
 		{
@@ -126,24 +147,11 @@ CAN_TxStatus_t sendTemperatureToMaster(float buffer[], uint16_t baseID)
 
 void sendReadingErrorInfoIntoCAN(void)
 {
-	/* Select pre-configured error ID based on slave board identity */
-#if defined(slave1)
-	uint16_t errorId = idSlave1ThermistorError;
-#elif defined(slave2)
-	uint16_t errorId = idSlave2ThermistorError;
-#elif defined(slave3)
-	uint16_t errorId = idSlave3ThermistorError;
-#elif defined(slave4)
-	uint16_t errorId = idSlave4ThermistorError;
-#else
-	#error "No slave defined! Define slave1, slave2, slave3 or slave4 in can.h"
-#endif
+	/* Local payload + ID derivado de SLAVE_ID (definido em can.h) */
+	uint8_t txData[8] = {0};
+	txData[0] = 67;  /* Error code: thermistor disconnection */
 
-	/* Pack error code 67 into byte 0 */
-	memset(FDCAN1TxData, 0, sizeof(FDCAN1TxData));
-	FDCAN1TxData[0] = 67;
-
-	CAN_TxStatus_t result = sendSingleFrame(errorId, FDCAN1TxData);
+	CAN_TxStatus_t result = sendSingleFrame((uint16_t)idSlaveError, txData);
 	if (result == CAN_TX_FATAL) {
 		Error_Handler(); // Fatal network error triggers SDC Shutdown
 	}

@@ -18,15 +18,35 @@
 /* ======================== Filtering Buffers =========================== */
 /** @brief IIR filter accumulator for each channel */
 uint16_t filteredAdcBuffer[numberOfThermistors] = {0};
-/** @brief Circular buffer for 3-tap median window */
-uint16_t medianBuffer[numberOfThermistors][3] = {0};
+/** @brief Circular buffer for N-tap median window (see MEDIAN_WINDOW_LEN in adc.h) */
+uint16_t medianBuffer[numberOfThermistors][MEDIAN_WINDOW_LEN] = {0};
 /** @brief Circular index for the median window buffer */
 uint8_t medianIndex[numberOfThermistors];
 
 /**
- * @brief Sorting network for 3 values.
- * @param a, b, c Input values to be sorted.
- * @return The median value of the three inputs.
+ * @brief Sorting network for 5 values — returns the median.
+ *        Uses 9 comparisons (Knuth's optimal 5-element network).
+ *        Operates on a local copy so the caller's buffer is preserved.
+ */
+static uint16_t median5(uint16_t v0, uint16_t v1, uint16_t v2, uint16_t v3, uint16_t v4)
+{
+	uint16_t a = v0, b = v1, c = v2, d = v3, e = v4;
+	#define SWAP_IF(x,y) do { if((x) > (y)) { uint16_t _t = (x); (x) = (y); (y) = _t; } } while(0)
+	SWAP_IF(a, b);
+	SWAP_IF(c, d);
+	SWAP_IF(a, c);
+	SWAP_IF(b, d);
+	SWAP_IF(b, c);
+	SWAP_IF(a, e);
+	SWAP_IF(a, c);
+	SWAP_IF(b, e);
+	SWAP_IF(b, c);
+	#undef SWAP_IF
+	return c;
+}
+
+/**
+ * @brief 3-element median (kept for callers that want a cheaper filter).
  */
 uint16_t median3(uint16_t a, uint16_t b, uint16_t c)
 {
@@ -44,45 +64,45 @@ uint16_t median3(uint16_t a, uint16_t b, uint16_t c)
 }
 
 /**
- * @brief Applies a 3-tap median filter to a specific channel.
- * @param newReading The latest raw ADC sample.
- * @param index The index of the thermistor channel.
- * @return The filtered value after median processing.
+ * @brief Applies an N-tap (MEDIAN_WINDOW_LEN) median filter to a specific channel.
+ *        5-tap kills EMI bursts up to 2 consecutive bad samples (3-tap only kills 1).
  */
 uint16_t applyMedianFilter(uint16_t newReading, uint8_t index)
 {
 	/* Insert new reading into the circular buffer */
 	medianBuffer[index][medianIndex[index]] = newReading;
 
-	/* Access last 3 samples */
-	uint16_t a = medianBuffer[index][0];
-	uint16_t b = medianBuffer[index][1];
-	uint16_t c = medianBuffer[index][2];
-
-	/* Advance circular pointer (0 -> 1 -> 2 -> 0) */
+	/* Advance circular pointer */
 	medianIndex[index]++;
-	if(medianIndex[index] >= 3) {
+	if(medianIndex[index] >= MEDIAN_WINDOW_LEN) {
 		medianIndex[index] = 0;
 	}
 
-	return median3(a,b,c);
+	return median5(medianBuffer[index][0],
+	               medianBuffer[index][1],
+	               medianBuffer[index][2],
+	               medianBuffer[index][3],
+	               medianBuffer[index][4]);
 }
 
 uint16_t applyIIRFilter(uint16_t newReading, uint8_t index){
-	/* Implementation uses bit-shifting for efficiency (alpha = 1/8)
-	 * Formula: y[n] = y[n-1] + (x[n] - y[n-1]) / 8 */
-	filteredAdcBuffer[index] += (int16_t)(newReading - filteredAdcBuffer[index]) >> 3;
+	/* y[n] = y[n-1] + (x[n] - y[n-1]) / 8  (alpha = 1/8)
+	 * Cálculo da diff em int32 + divisão signed evita o shift-on-signed UB e
+	 * deixa a intenção explícita (compilador gera o mesmo ASR no ARM). */
+	int32_t diff = (int32_t)newReading - (int32_t)filteredAdcBuffer[index];
+	filteredAdcBuffer[index] = (uint16_t)((int32_t)filteredAdcBuffer[index] + (diff / 8));
 	return filteredAdcBuffer[index];
 }
 
 float convertBitsToVoltage(uint16_t rawAdcVal){
-	return (rawAdcVal*vcc)/adcResolution;
+	return ((float)rawAdcVal * vcc) / (float)adcResolution;
 }
 
 float convertVoltageToTemperature(float voltage){
 #ifdef USE_FITTING_CURVE
-	/* Polinômio calibrado T(V) de 4ª ordem */
-	return C0 + C1 * voltage + C2 * pow(voltage, 2) + C3 * pow(voltage, 3) + C4 * pow(voltage, 4);
+	/* Polinômio T(V) de 4ª ordem via Horner — 3 mul + 4 add, sem chamadas a pow().
+	 * T(V) = C0 + V·(C1 + V·(C2 + V·(C3 + V·C4))) */
+	return C0 + voltage * (C1 + voltage * (C2 + voltage * (C3 + voltage * C4)));
 #endif
 
 #ifdef USE_STEINHART_HART
@@ -104,7 +124,7 @@ thermStatus checkThermistorConnection(uint16_t rawAdcVal){
 	if (rawAdcVal <= shortCircuitThreshold) {
 		return THERM_SHORT;
 	}
-	if (rawAdcVal >= openCircuitThreshhold) {
+	if (rawAdcVal >= openCircuitThreshold) {
 		return THERM_OPEN;
 	}
 	return OK;
@@ -117,8 +137,8 @@ void initTemperatureFilters(uint16_t rawAdcBuffer[])
         /* Seed IIR accumulator with initial real value */
         filteredAdcBuffer[i] = rawAdcBuffer[i];
 
-        /* Seed all 3 median window positions to prevent startup spikes */
-        for(int j = 0; j < 3; j++) {
+        /* Seed all median window positions to prevent startup spikes */
+        for(int j = 0; j < MEDIAN_WINDOW_LEN; j++) {
             medianBuffer[i][j] = rawAdcBuffer[i];
         }
 
